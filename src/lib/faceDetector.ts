@@ -26,13 +26,14 @@ export interface FaceDetection {
   keypoints: FaceKeypoints | null;
 }
 
-// WASM runtime + model are loaded from CDN at runtime rather than bundled —
-// unlike @techstark/opencv-js (which inlines its WASM into one huge JS file),
-// this package has a clean ESM entry and keeps WASM/model as separate assets,
-// so this doesn't repeat the earlier opencv.js dev-bundle size problem.
-const WASM_BASE_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
-const MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
+// WASM runtime + model are served from our own /public/mediapipe (copied from
+// node_modules/@mediapipe/tasks-vision/wasm and downloaded from Google's model
+// storage respectively) instead of a CDN, so there's no first-load network
+// fetch to a third party. Kept as separate static assets (not bundled into the
+// JS build) — unlike @techstark/opencv-js, which inlines its WASM into one huge
+// JS file — so this doesn't repeat the earlier opencv.js dev-bundle size problem.
+const WASM_BASE_URL = '/mediapipe/wasm';
+const MODEL_URL = '/mediapipe/models/blaze_face_short_range.tflite';
 
 let detector: FaceDetector | null = null;
 let loadingPromise: Promise<FaceDetector> | null = null;
