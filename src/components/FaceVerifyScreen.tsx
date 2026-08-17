@@ -9,25 +9,25 @@ import { CameraIcon } from './CameraIcon';
 import { ErrorDialog } from './ErrorDialog';
 import { StepHeader } from './StepHeader';
 import { loadFaceDetector } from '../lib/faceDetector';
+import { loadOpenCv } from '../lib/opencv';
 import { canvasToBlob, computeSourceRect, drawRegionToCanvas } from '../lib/captureUtils';
 import { useTranslation, type TranslationKey } from '../lib/i18n';
 import type { ScanTick } from '../lib/stabilityMachine';
+import { ApiError, uploadPhoto } from '../lib/api';
 
-// Mocked verification delay standing in for a real liveness/match API call.
-// TODO: replace with an actual backend verification request.
-const VERIFYING_DELAY_MS = 1200;
 const SUCCESS_HOLD_MS = 700;
 
 type Phase = 'scanning' | 'verifying' | 'success';
 type FaceErrorKind = 'unclear' | 'sunglasses' | 'mask';
 
 interface FaceVerifyScreenProps {
-  onSuccess: (blob: Blob) => void;
+  transactionId: string;
+  onSuccess: (blob: Blob, isNeedPaper: boolean) => void;
   onCancel: () => void;
 }
 
-export function FaceVerifyScreen({ onSuccess, onCancel }: FaceVerifyScreenProps) {
-  const { t } = useTranslation();
+export function FaceVerifyScreen({ transactionId, onSuccess, onCancel }: FaceVerifyScreenProps) {
+  const { t, lang } = useTranslation();
   const { videoRef, status: cameraStatus, error: cameraError } = useCamera(true, 'user');
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -35,15 +35,21 @@ export function FaceVerifyScreen({ onSuccess, onCancel }: FaceVerifyScreenProps)
   const [modelReady, setModelReady] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
   const [faceError, setFaceError] = useState<FaceErrorKind | null>(null);
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null);
   const [scanTick, setScanTick] = useState<ScanTick>({ status: 'no_document', progress: 0, quad: null });
   const [phase, setPhase] = useState<Phase>('scanning');
   const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
+  const [isNeedPaper, setIsNeedPaper] = useState(true);
   const capturedUrl = useObjectUrl(capturedBlob);
 
   useEffect(() => {
     loadFaceDetector()
       .then(() => setModelReady(true))
       .catch((err) => setModelError(err instanceof Error ? err.message : 'Không thể tải mô hình nhận diện khuôn mặt.'));
+    // Fire-and-forget: the document step (if not skipped) needs OpenCV, so start downloading it
+    // now instead of waiting until the user lands there. Errors are surfaced again from
+    // DocumentVerifyScreen's own loadOpenCv() call, so they're safely ignored here.
+    loadOpenCv().catch(() => {});
   }, []);
 
   const handleTick = useCallback((tick: ScanTick) => setScanTick(tick), []);
@@ -71,23 +77,38 @@ export function FaceVerifyScreen({ onSuccess, onCancel }: FaceVerifyScreenProps)
   }, [videoRef, containerRef, frameRef]);
   const handleRetry = useCallback(() => {
     setFaceError(null);
+    setUploadErrorMessage(null);
     setCapturedBlob(null);
     setPhase('scanning');
     setScanTick({ status: 'no_document', progress: 0, quad: null });
   }, []);
 
-  // Mocked verification: always succeeds after a brief delay.
   useEffect(() => {
-    if (phase !== 'verifying') return;
-    const timer = setTimeout(() => setPhase('success'), VERIFYING_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [phase]);
+    if (phase !== 'verifying' || !capturedBlob) return;
+    let cancelled = false;
+
+    uploadPhoto(capturedBlob, 'FACE', transactionId, lang)
+      .then((result) => {
+        if (cancelled) return;
+        setIsNeedPaper(result.isNeedPaper);
+        setPhase('success');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setUploadErrorMessage(err instanceof ApiError ? err.message : t('face.errorUnclear'));
+        setPhase('scanning');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, capturedBlob, transactionId, lang, t]);
 
   useEffect(() => {
     if (phase !== 'success' || !capturedBlob) return;
-    const timer = setTimeout(() => onSuccess(capturedBlob), SUCCESS_HOLD_MS);
+    const timer = setTimeout(() => onSuccess(capturedBlob, isNeedPaper), SUCCESS_HOLD_MS);
     return () => clearTimeout(timer);
-  }, [phase, capturedBlob, onSuccess]);
+  }, [phase, capturedBlob, isNeedPaper, onSuccess]);
 
   const cameraReady = cameraStatus === 'ready';
   const ready = cameraReady && modelReady;
@@ -122,7 +143,7 @@ export function FaceVerifyScreen({ onSuccess, onCancel }: FaceVerifyScreenProps)
           containerRef={containerRef}
           quad={null}
           tone={tone}
-          statusText={faceError ? '' : bottomStatusText}
+          statusText={faceError || uploadErrorMessage ? '' : bottomStatusText}
           progress={phase === 'scanning' ? scanTick.progress : 1}
         />
 
@@ -169,6 +190,7 @@ export function FaceVerifyScreen({ onSuccess, onCancel }: FaceVerifyScreenProps)
       )}
 
       {faceError && <ErrorDialog message={t(faceErrorMessageKey(faceError))} onRescan={handleRetry} onHome={onCancel} />}
+      {uploadErrorMessage && <ErrorDialog message={uploadErrorMessage} onRescan={handleRetry} onHome={onCancel} />}
     </>
   );
 }

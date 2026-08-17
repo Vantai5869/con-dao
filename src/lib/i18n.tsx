@@ -17,6 +17,7 @@ const vi = {
   'qr.title': 'Quét mã QR vé tàu',
   'qr.subtitle': 'Bước tiếp theo: Quét khuôn mặt',
   'qr.hint': 'Đưa mã QR vào khung hệ thống sẽ tự động nhận diện',
+  'qr.registering': 'Đang xử lý thông tin vé...',
   'qr.summaryTitle': 'Thông tin vé',
   'qr.passenger': 'Hành khách',
   'qr.idNumber': 'CCCD/Passport',
@@ -26,9 +27,12 @@ const vi = {
   'qr.nextStep': 'Bước tiếp theo',
   'qr.rescanHint': 'Quét lại nếu sai thông tin',
   'qr.errorInvalid': 'QR không hợp lệ',
-  'qr.errorUsed': 'Vé đã sử dụng',
   'qr.rescan': 'Quét lại',
   'qr.home': 'Trang chủ',
+  'qr.resumeTitle': 'Tiếp tục định danh?',
+  'qr.resumeMessage': 'Bạn đã hoàn thành xong bước Chụp khuôn mặt. Bạn muốn thực hiện lại bước này hay tiếp tục đến bước Chụp giấy tờ?',
+  'qr.resumeRedo': 'Làm lại',
+  'qr.resumeContinue': 'Tiếp tục',
 
   'face.title': 'Chụp khuôn mặt',
   'face.subtitle': 'Xác minh danh tính',
@@ -59,8 +63,11 @@ const vi = {
   'success.ticketLabel': 'Vé',
   'success.restart': 'Định danh vé khác',
 
+  'common.loading': 'Đang tải...',
   'common.loadingCamera': 'Đang khởi động camera...',
   'common.loadingModel': 'Đang tải mô hình nhận diện...',
+  'common.uploading': 'Đang tải ảnh lên...',
+  'common.unexpectedError': 'Đã có lỗi xảy ra. Vui lòng thử lại.',
   'common.cameraError': 'Không thể truy cập camera.',
 } as const;
 
@@ -81,6 +88,7 @@ const en: Record<TranslationKey, string> = {
   'qr.title': 'Scan ferry ticket QR',
   'qr.subtitle': 'Next: Face scan',
   'qr.hint': 'Place the QR code in the frame — it will be detected automatically',
+  'qr.registering': 'Processing ticket information...',
   'qr.summaryTitle': 'Ticket information',
   'qr.passenger': 'Passenger',
   'qr.idNumber': 'ID/Passport No.',
@@ -90,9 +98,12 @@ const en: Record<TranslationKey, string> = {
   'qr.nextStep': 'Next step',
   'qr.rescanHint': 'Scan again if the information is wrong',
   'qr.errorInvalid': 'Invalid QR code',
-  'qr.errorUsed': 'Ticket already used',
   'qr.rescan': 'Scan again',
   'qr.home': 'Home',
+  'qr.resumeTitle': 'Continue verification?',
+  'qr.resumeMessage': "You've already completed the face capture step. Do you want to redo it, or continue to the document capture step?",
+  'qr.resumeRedo': 'Redo',
+  'qr.resumeContinue': 'Continue',
 
   'face.title': 'Face photo',
   'face.subtitle': 'Identity verification',
@@ -123,8 +134,11 @@ const en: Record<TranslationKey, string> = {
   'success.ticketLabel': 'Ticket',
   'success.restart': 'Verify another passenger',
 
+  'common.loading': 'Loading...',
   'common.loadingCamera': 'Starting camera...',
   'common.loadingModel': 'Loading recognition model...',
+  'common.uploading': 'Uploading photo...',
+  'common.unexpectedError': 'Something went wrong. Please try again.',
   'common.cameraError': 'Unable to access the camera.',
 };
 
@@ -143,6 +157,7 @@ const zh: Record<TranslationKey, string> = {
   'qr.title': '扫描船票二维码',
   'qr.subtitle': '下一步：面部扫描',
   'qr.hint': '请将二维码对准取景框，系统将自动识别',
+  'qr.registering': '正在处理船票信息...',
   'qr.summaryTitle': '船票信息',
   'qr.passenger': '乘客姓名',
   'qr.idNumber': '身份证/护照号',
@@ -152,9 +167,12 @@ const zh: Record<TranslationKey, string> = {
   'qr.nextStep': '下一步',
   'qr.rescanHint': '信息有误请重新扫描',
   'qr.errorInvalid': '二维码无效',
-  'qr.errorUsed': '船票已使用',
   'qr.rescan': '重新扫描',
   'qr.home': '返回首页',
+  'qr.resumeTitle': '继续验证？',
+  'qr.resumeMessage': '您已完成面部拍摄步骤。是否要重新拍摄，还是继续进行证件拍摄步骤？',
+  'qr.resumeRedo': '重新拍摄',
+  'qr.resumeContinue': '继续',
 
   'face.title': '拍摄面部照片',
   'face.subtitle': '身份验证',
@@ -185,8 +203,11 @@ const zh: Record<TranslationKey, string> = {
   'success.ticketLabel': '船票',
   'success.restart': '验证下一位乘客',
 
+  'common.loading': '加载中...',
   'common.loadingCamera': '正在启动摄像头...',
   'common.loadingModel': '正在加载识别模型...',
+  'common.uploading': '正在上传照片...',
+  'common.unexpectedError': '发生错误，请重试。',
   'common.cameraError': '无法访问摄像头。',
 };
 
@@ -205,6 +226,7 @@ const ja: Record<TranslationKey, string> = {
   'qr.title': '乗船券のQRコードをスキャン',
   'qr.subtitle': '次のステップ：顔認証',
   'qr.hint': 'QRコードをフレーム内に合わせてください。自動で認識されます',
+  'qr.registering': '乗船券情報を処理しています...',
   'qr.summaryTitle': '乗船券情報',
   'qr.passenger': '乗客名',
   'qr.idNumber': '身分証/パスポート番号',
@@ -214,9 +236,12 @@ const ja: Record<TranslationKey, string> = {
   'qr.nextStep': '次へ',
   'qr.rescanHint': '情報が間違っている場合は再スキャンしてください',
   'qr.errorInvalid': 'QRコードが無効です',
-  'qr.errorUsed': 'この乗船券は使用済みです',
   'qr.rescan': '再スキャン',
   'qr.home': 'ホームへ',
+  'qr.resumeTitle': '本人確認を続けますか？',
+  'qr.resumeMessage': '顔写真の撮影はすでに完了しています。やり直しますか、それとも書類の撮影に進みますか？',
+  'qr.resumeRedo': 'やり直す',
+  'qr.resumeContinue': '続ける',
 
   'face.title': '顔写真の撮影',
   'face.subtitle': '本人確認',
@@ -247,8 +272,11 @@ const ja: Record<TranslationKey, string> = {
   'success.ticketLabel': '乗船券',
   'success.restart': '次の乗客の確認へ',
 
+  'common.loading': '読み込み中...',
   'common.loadingCamera': 'カメラを起動しています...',
   'common.loadingModel': '認識モデルを読み込み中...',
+  'common.uploading': '写真をアップロード中...',
+  'common.unexpectedError': 'エラーが発生しました。もう一度お試しください。',
   'common.cameraError': 'カメラにアクセスできません。',
 };
 
@@ -267,6 +295,7 @@ const ko: Record<TranslationKey, string> = {
   'qr.title': '승선권 QR 코드 스캔',
   'qr.subtitle': '다음 단계: 얼굴 인식',
   'qr.hint': 'QR 코드를 프레임 안에 맞추면 자동으로 인식됩니다',
+  'qr.registering': '승선권 정보를 처리하는 중...',
   'qr.summaryTitle': '승선권 정보',
   'qr.passenger': '승객 성명',
   'qr.idNumber': '신분증/여권 번호',
@@ -276,9 +305,12 @@ const ko: Record<TranslationKey, string> = {
   'qr.nextStep': '다음 단계',
   'qr.rescanHint': '정보가 잘못된 경우 다시 스캔하세요',
   'qr.errorInvalid': '유효하지 않은 QR 코드입니다',
-  'qr.errorUsed': '이미 사용된 승선권입니다',
   'qr.rescan': '다시 스캔',
   'qr.home': '홈으로',
+  'qr.resumeTitle': '본인 확인을 계속하시겠습니까?',
+  'qr.resumeMessage': '얼굴 사진 촬영 단계를 이미 완료했습니다. 다시 촬영하시겠습니까, 아니면 신분증 촬영 단계로 계속하시겠습니까?',
+  'qr.resumeRedo': '다시 촬영',
+  'qr.resumeContinue': '계속하기',
 
   'face.title': '얼굴 사진 촬영',
   'face.subtitle': '본인 확인',
@@ -309,8 +341,11 @@ const ko: Record<TranslationKey, string> = {
   'success.ticketLabel': '승선권',
   'success.restart': '다음 승객 확인하기',
 
+  'common.loading': '로딩 중...',
   'common.loadingCamera': '카메라를 시작하는 중...',
   'common.loadingModel': '인식 모델을 불러오는 중...',
+  'common.uploading': '사진 업로드 중...',
+  'common.unexpectedError': '오류가 발생했습니다. 다시 시도해 주세요.',
   'common.cameraError': '카메라에 접근할 수 없습니다.',
 };
 

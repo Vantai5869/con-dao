@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { LANGUAGES, useTranslation } from '../lib/i18n';
 import { LanguageSelector } from './LanguageSelector';
 import ferryBoat from '../assets/ferry-boat.png';
@@ -21,6 +21,17 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
   const [showLanguage, setShowLanguage] = useState(false);
   const currentFlag = LANGUAGES.find((option) => option.code === lang)?.flag ?? '🏳️';
   const bannerArcId = useId();
+
+  useEffect(() => {
+    // Fire-and-forget prefetch: start downloading the face/document detection libraries as soon
+    // as the kiosk is idle on the welcome screen, so they're ready (or closer to ready) by the
+    // time the user reaches those steps instead of waiting from a standing start. Dynamic
+    // `import()` keeps them out of this screen's own bundle — welcome must still render instantly
+    // even if the prefetch is slow (see CheckInFlow.tsx's lazy-loading comment for the bug this
+    // avoids repeating). Failures are ignored here; each screen retries and surfaces its own error.
+    import('../lib/faceDetector').then((m) => m.loadFaceDetector()).catch(() => {});
+    import('../lib/opencv').then((m) => m.loadOpenCv()).catch(() => {});
+  }, []);
 
   return (
     <div className="welcome-screen">

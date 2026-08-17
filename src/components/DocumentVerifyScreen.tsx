@@ -13,6 +13,7 @@ import { warpToBlob } from '../lib/perspective';
 import { canvasToBlob, computeSourceRect, drawRegionToCanvas } from '../lib/captureUtils';
 import { useTranslation } from '../lib/i18n';
 import type { ScanTick } from '../lib/stabilityMachine';
+import { ApiError, uploadPhoto, type UploadType } from '../lib/api';
 
 export type DocType = 'cccd' | 'passport';
 export interface DocumentBlobs {
@@ -22,6 +23,7 @@ export interface DocumentBlobs {
 }
 
 interface DocumentVerifyScreenProps {
+  transactionId: string;
   onSuccess: (blobs: DocumentBlobs) => void;
   onCancel: () => void;
 }
@@ -30,8 +32,13 @@ type Side = 'front' | 'back';
 
 const FRONT_CAPTURED_ANIMATION_MS = 600;
 
-export function DocumentVerifyScreen({ onSuccess, onCancel }: DocumentVerifyScreenProps) {
-  const { t } = useTranslation();
+function uploadTypeFor(docType: DocType, side: Side): UploadType {
+  if (docType === 'passport') return 'PASSPORT';
+  return side === 'front' ? 'CC_FRONT' : 'CC_BACK';
+}
+
+export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: DocumentVerifyScreenProps) {
+  const { t, lang } = useTranslation();
   const { videoRef, status: cameraStatus, error: cameraError } = useCamera(true, 'environment');
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -39,6 +46,8 @@ export function DocumentVerifyScreen({ onSuccess, onCancel }: DocumentVerifyScre
   const [cvReady, setCvReady] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
   const [detectError, setDetectError] = useState<string | null>(null);
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [scanTick, setScanTick] = useState<ScanTick>({ status: 'no_document', progress: 0, quad: null });
 
   const [docType, setDocType] = useState<DocType>('cccd');
@@ -63,17 +72,25 @@ export function DocumentVerifyScreen({ onSuccess, onCancel }: DocumentVerifyScre
   const handleError = useCallback((message: string) => setDetectError(message), []);
 
   const handleCaptured = useCallback(
-    (blob: Blob) => {
-      if (docType === 'passport' || side === 'back') {
-        onSuccess({ docType, front: side === 'front' ? blob : (frontBlob as Blob), back: side === 'back' ? blob : undefined });
-        return;
+    async (blob: Blob) => {
+      setUploading(true);
+      try {
+        await uploadPhoto(blob, uploadTypeFor(docType, side), transactionId, lang);
+        if (docType === 'passport' || side === 'back') {
+          onSuccess({ docType, front: side === 'front' ? blob : (frontBlob as Blob), back: side === 'back' ? blob : undefined });
+          return;
+        }
+        // CCCD front captured: play the "flies into the slot-1 thumbnail" confirmation
+        // before moving on to the back side, so it's obvious the front shot registered.
+        setFrontBlob(blob);
+        setFrontJustCaptured(true);
+      } catch (err) {
+        setUploadErrorMessage(err instanceof ApiError ? err.message : t('document.errorNotRecognized'));
+      } finally {
+        setUploading(false);
       }
-      // CCCD front captured: play the "flies into the slot-1 thumbnail" confirmation
-      // before moving on to the back side, so it's obvious the front shot registered.
-      setFrontBlob(blob);
-      setFrontJustCaptured(true);
     },
-    [docType, side, frontBlob, onSuccess],
+    [docType, side, frontBlob, transactionId, lang, t, onSuccess],
   );
 
   useEffect(() => {
@@ -106,6 +123,7 @@ export function DocumentVerifyScreen({ onSuccess, onCancel }: DocumentVerifyScre
   }, [videoRef, containerRef, frameRef, scanTick.quad, handleCaptured]);
 
   const handleRetry = useCallback(() => {
+    setUploadErrorMessage(null);
     resetScan();
   }, [resetScan]);
 
@@ -125,7 +143,7 @@ export function DocumentVerifyScreen({ onSuccess, onCancel }: DocumentVerifyScre
     docType === 'passport' ? t('document.passportFront') : side === 'front' ? t('document.cccdFront') : t('document.cccdBack');
   const subtitle = docType === 'passport' ? t('document.passportHint') : t('document.cccdHint');
 
-  const statusText = getStatusText({ cameraStatus, cameraError, cvReady, cvError, scanTick, t });
+  const statusText = uploading ? t('common.uploading') : getStatusText({ cameraStatus, cameraError, cvReady, cvError, scanTick, t });
   const tone: OverlayTone =
     scanTick.status === 'holding' ? 'holding' : scanTick.status === 'capture' ? 'success' : 'idle';
 
@@ -147,7 +165,7 @@ export function DocumentVerifyScreen({ onSuccess, onCancel }: DocumentVerifyScre
           containerRef={containerRef}
           quad={scanTick.quad}
           tone={tone}
-          statusText={detectError ? '' : statusText}
+          statusText={detectError || uploadErrorMessage ? '' : statusText}
           progress={scanTick.progress}
           barBottom={88}
         />
@@ -159,7 +177,7 @@ export function DocumentVerifyScreen({ onSuccess, onCancel }: DocumentVerifyScre
         )}
       </CameraView>
 
-      {side === 'front' && !frontJustCaptured && (
+      {side === 'front' && !frontJustCaptured && !uploading && (
         <div className="document-verify__type-toggle">
           <button
             type="button"
@@ -180,13 +198,13 @@ export function DocumentVerifyScreen({ onSuccess, onCancel }: DocumentVerifyScre
         </div>
       )}
 
-      {cameraReady && !frontJustCaptured && (
+      {cameraReady && !frontJustCaptured && !uploading && (
         <button type="button" className="manual-capture-btn manual-capture-btn--raised" aria-label="Chụp" onClick={manualCapture}>
           <CameraIcon />
         </button>
       )}
 
-      {ready && !frontJustCaptured && (
+      {ready && !frontJustCaptured && !uploading && (
         <ScannerScreen
           key={`${docType}-${side}`}
           videoRef={videoRef}
@@ -201,6 +219,8 @@ export function DocumentVerifyScreen({ onSuccess, onCancel }: DocumentVerifyScre
       {detectError && (
         <ErrorDialog message={t('document.errorNotRecognized')} onRescan={handleRetry} onHome={onCancel} />
       )}
+
+      {uploadErrorMessage && <ErrorDialog message={uploadErrorMessage} onRescan={handleRetry} onHome={onCancel} />}
 
       {previewOpen && frontThumbUrl && (
         <div className="document-verify__preview-backdrop" onClick={() => setPreviewOpen(false)}>

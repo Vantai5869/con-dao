@@ -4,7 +4,7 @@ import type { OverlayTone } from './DocumentOverlay';
 interface GuideFrameProps {
   frameRef: RefObject<HTMLDivElement | null>;
   /**
-   * 'corners-qr' is a small near-square frame sized for a QR code; 'corners-document' is a wide
+   * 'corners-qr' is a small square frame sized for a QR code; 'corners-document' is a wide
    * landscape frame sized for an ID card/passport photo page — they share the corner-bracket look
    * but must NOT share dimensions, since this element's bounding box is also what capture crops to.
    */

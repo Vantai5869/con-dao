@@ -1,17 +1,10 @@
 import { useTranslation } from '../lib/i18n';
-import type { Ticket } from '../lib/ticket';
+import { routeLabel, type Ticket } from '../lib/ticket';
 
 interface TicketSummaryCardProps {
   ticket: Ticket;
   onNext: () => void;
   onRescan: () => void;
-}
-
-function formatDatetime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /** Replaces the camera view after a ticket QR is successfully decoded, showing the parsed info for confirmation. */
@@ -44,11 +37,11 @@ export function TicketSummaryCard({ ticket, onNext, onRescan }: TicketSummaryCar
           </div>
           <div className="ticket-summary__row">
             <dt>{t('qr.departureTime')}</dt>
-            <dd>{formatDatetime(ticket.datetime)}</dd>
+            <dd>{ticket.datetime}</dd>
           </div>
           <div className="ticket-summary__row">
             <dt>{t('qr.route')}</dt>
-            <dd>{ticket.route}</dd>
+            <dd>{routeLabel(ticket.routeCode)}</dd>
           </div>
         </dl>
       </div>

@@ -1,10 +1,13 @@
-import { lazy, Suspense, useCallback, useState } from 'react';
+import { lazy, Suspense, useCallback, useState, type ReactNode } from 'react';
 import { WelcomeScreen } from './WelcomeScreen';
-import { QrScanScreen } from './QrScanScreen';
+import { QrScanScreen, type QrConfirmedStep } from './QrScanScreen';
 import { SuccessScreen } from './SuccessScreen';
+import { ErrorBoundary } from './ErrorBoundary';
+import { ErrorDialog } from './ErrorDialog';
+import { ScreenLoading } from './ScreenLoading';
 import type { DocumentBlobs } from './DocumentVerifyScreen';
-import { checkFaceExists } from '../lib/faceExistsApi';
-import { generatePassCode, isReturnTrip, markTicketUsed, type Ticket } from '../lib/ticket';
+import { generatePassCode, type Ticket } from '../lib/ticket';
+import { useTranslation } from '../lib/i18n';
 
 // Lazy-loaded: each pulls in a heavy detection library (MediaPipe / OpenCV.js).
 // The welcome/QR screens need neither, so they must not be blocked behind
@@ -16,10 +19,12 @@ const DocumentVerifyScreen = lazy(() =>
 
 type Step = 'welcome' | 'qr' | 'face' | 'document' | 'success';
 
-/** Owns the whole check-in wizard's cross-step state and step transitions, including the return-trip skip-document branch. */
+/** Owns the whole check-in wizard's cross-step state and step transitions, including the server-driven skip-face branch. */
 export function CheckInFlow() {
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>('welcome');
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [transactionId, setTransactionId] = useState<string | null>(null);
   const [faceBlob, setFaceBlob] = useState<Blob | null>(null);
   const [, setDocumentBlobs] = useState<DocumentBlobs | null>(null);
   const [passCode, setPassCode] = useState('');
@@ -27,34 +32,31 @@ export function CheckInFlow() {
   const reset = useCallback(() => {
     setStep('welcome');
     setTicket(null);
+    setTransactionId(null);
     setFaceBlob(null);
     setDocumentBlobs(null);
     setPassCode('');
   }, []);
 
   const finish = useCallback((finalTicket: Ticket) => {
-    markTicketUsed(finalTicket.code);
     setPassCode(generatePassCode(finalTicket));
     setStep('success');
   }, []);
 
-  const handleQrConfirmed = useCallback((confirmedTicket: Ticket) => {
+  const handleQrConfirmed = useCallback((confirmedTicket: Ticket, confirmedTransactionId: string, targetStep: QrConfirmedStep) => {
     setTicket(confirmedTicket);
-    setStep('face');
+    setTransactionId(confirmedTransactionId);
+    setStep(targetStep);
   }, []);
 
   const handleFaceSuccess = useCallback(
-    async (blob: Blob) => {
+    (blob: Blob, isNeedPaper: boolean) => {
       setFaceBlob(blob);
-      if (ticket && isReturnTrip(ticket)) {
-        // TODO: real face-match API. Mocked to always exist for now.
-        const exists = await checkFaceExists(ticket.idNumber);
-        if (exists) {
-          finish(ticket);
-          return;
-        }
+      if (isNeedPaper) {
+        setStep('document');
+      } else if (ticket) {
+        finish(ticket);
       }
-      setStep('document');
     },
     [ticket, finish],
   );
@@ -67,30 +69,42 @@ export function CheckInFlow() {
     [ticket, finish],
   );
 
+  let screen: ReactNode;
   switch (step) {
     case 'welcome':
-      return <WelcomeScreen onStart={() => setStep('qr')} />;
+      screen = <WelcomeScreen onStart={() => setStep('qr')} />;
+      break;
 
     case 'qr':
-      return <QrScanScreen onConfirmed={handleQrConfirmed} onCancel={reset} />;
+      screen = <QrScanScreen onConfirmed={handleQrConfirmed} onCancel={reset} />;
+      break;
 
     case 'face':
-      return (
-        <Suspense fallback={<div className="screen-loading">Đang tải...</div>}>
-          <FaceVerifyScreen onSuccess={handleFaceSuccess} onCancel={reset} />
+      screen = (
+        <Suspense fallback={<ScreenLoading />}>
+          <FaceVerifyScreen transactionId={transactionId as string} onSuccess={handleFaceSuccess} onCancel={reset} />
         </Suspense>
       );
+      break;
 
     case 'document':
-      return (
-        <Suspense fallback={<div className="screen-loading">Đang tải...</div>}>
-          <DocumentVerifyScreen onSuccess={handleDocumentSuccess} onCancel={reset} />
+      screen = (
+        <Suspense fallback={<ScreenLoading />}>
+          <DocumentVerifyScreen transactionId={transactionId as string} onSuccess={handleDocumentSuccess} onCancel={reset} />
         </Suspense>
       );
+      break;
 
     case 'success':
-      return (
-        <SuccessScreen faceBlob={faceBlob} passengerName={ticket?.name ?? ''} passCode={passCode} onRestart={reset} />
-      );
+      screen = <SuccessScreen faceBlob={faceBlob} passengerName={ticket?.name ?? ''} passCode={passCode} onRestart={reset} />;
+      break;
   }
+
+  return (
+    // Keyed on `step` so leaving the crashed screen (via the fallback's own reset button, which
+    // calls `reset()` and changes `step`) remounts a fresh boundary instead of staying tripped.
+    <ErrorBoundary key={step} fallback={<ErrorDialog message={t('common.unexpectedError')} onRescan={reset} />}>
+      {screen}
+    </ErrorBoundary>
+  );
 }

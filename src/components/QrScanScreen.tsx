@@ -6,46 +6,72 @@ import { DocumentOverlay } from './DocumentOverlay';
 import { QrScannerScreen } from './QrScannerScreen';
 import { TicketSummaryCard } from './TicketSummaryCard';
 import { ErrorDialog } from './ErrorDialog';
+import { ResumeStepDialog } from './ResumeStepDialog';
 import { StepHeader } from './StepHeader';
 import { useTranslation } from '../lib/i18n';
-import { isTicketUsed, parseTicketQr, type Ticket } from '../lib/ticket';
+import { parseTicketInfo, type Ticket } from '../lib/ticket';
+import { ApiError, registerTransaction } from '../lib/api';
+
+export type QrConfirmedStep = 'face' | 'document';
 
 interface QrScanScreenProps {
-  onConfirmed: (ticket: Ticket) => void;
+  onConfirmed: (ticket: Ticket, transactionId: string, targetStep: QrConfirmedStep) => void;
   onCancel: () => void;
 }
 
-type ErrorKind = 'invalid' | 'used' | null;
-
-/** Step 1: scan the ferry ticket QR, then show its parsed info for confirmation. */
+/** Step 1: scan the ferry ticket QR, register the transaction, then show the parsed ticket for confirmation. */
 export function QrScanScreen({ onConfirmed, onCancel }: QrScanScreenProps) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const { videoRef, status: cameraStatus, error: cameraError } = useCamera(true, 'environment');
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [errorKind, setErrorKind] = useState<ErrorKind>(null);
+  const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [nextStep, setNextStep] = useState<2 | 3>(2);
+  const [registering, setRegistering] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showResumeChoice, setShowResumeChoice] = useState(false);
   const [scanKey, setScanKey] = useState(0);
 
-  const handleDecoded = useCallback((raw: string) => {
-    const parsed = parseTicketQr(raw);
-    if (!parsed) {
-      setErrorKind('invalid');
-      return;
-    }
-    if (isTicketUsed(parsed.code)) {
-      setErrorKind('used');
-      return;
-    }
-    setTicket(parsed);
-  }, []);
+  const handleDecoded = useCallback(
+    async (raw: string) => {
+      const parsed = parseTicketInfo(raw);
+      if (!parsed) {
+        setErrorMessage(t('qr.errorInvalid'));
+        return;
+      }
+
+      setRegistering(true);
+      try {
+        const result = await registerTransaction(raw, lang);
+        setTicket(parsed);
+        setTransactionId(result.transactionId);
+        setNextStep(result.nextStep);
+      } catch (err) {
+        setErrorMessage(err instanceof ApiError ? err.message : t('qr.errorInvalid'));
+      } finally {
+        setRegistering(false);
+      }
+    },
+    [t, lang],
+  );
 
   const handleRescan = useCallback(() => {
-    setErrorKind(null);
+    setErrorMessage(null);
     setTicket(null);
+    setTransactionId(null);
+    setShowResumeChoice(false);
     setScanKey((k) => k + 1);
   }, []);
+
+  const handleNext = useCallback(() => {
+    if (nextStep === 3) {
+      setShowResumeChoice(true);
+      return;
+    }
+    if (ticket && transactionId) onConfirmed(ticket, transactionId, 'face');
+  }, [ticket, transactionId, nextStep, onConfirmed]);
 
   const cameraReady = cameraStatus === 'ready';
   const statusText =
@@ -66,12 +92,12 @@ export function QrScanScreen({ onConfirmed, onCancel }: QrScanScreenProps) {
           containerRef={containerRef}
           quad={null}
           tone="idle"
-          statusText={ticket || errorKind ? '' : statusText}
+          statusText={ticket || errorMessage ? '' : registering ? t('qr.registering') : statusText}
           progress={0}
         />
       </CameraView>
 
-      {cameraReady && !ticket && !errorKind && (
+      {cameraReady && !ticket && !errorMessage && !registering && (
         <QrScannerScreen
           key={scanKey}
           videoRef={videoRef}
@@ -81,15 +107,16 @@ export function QrScanScreen({ onConfirmed, onCancel }: QrScanScreenProps) {
         />
       )}
 
-      {ticket && <TicketSummaryCard ticket={ticket} onNext={() => onConfirmed(ticket)} onRescan={handleRescan} />}
+      {ticket && !showResumeChoice && <TicketSummaryCard ticket={ticket} onNext={handleNext} onRescan={handleRescan} />}
 
-      {errorKind && (
-        <ErrorDialog
-          message={errorKind === 'invalid' ? t('qr.errorInvalid') : t('qr.errorUsed')}
-          onRescan={handleRescan}
-          onHome={onCancel}
+      {showResumeChoice && ticket && transactionId && (
+        <ResumeStepDialog
+          onRedo={() => onConfirmed(ticket, transactionId, 'face')}
+          onContinue={() => onConfirmed(ticket, transactionId, 'document')}
         />
       )}
+
+      {errorMessage && <ErrorDialog message={errorMessage} onRescan={handleRescan} onHome={onCancel} />}
     </>
   );
 }

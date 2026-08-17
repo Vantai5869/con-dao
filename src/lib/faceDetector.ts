@@ -38,6 +38,12 @@ const MODEL_URL = '/mediapipe/models/blaze_face_short_range.tflite';
 let detector: FaceDetector | null = null;
 let loadingPromise: Promise<FaceDetector> | null = null;
 
+// A variant of this function tried building a manual WasmFileset from client-side-decompressed
+// .gz siblings (via DecompressionStream + blob URLs) to cut the ~12MB transfer without needing
+// server-side gzip. Reverted after it caused a blank/crashed screen on real-device testing —
+// paired with the same issue in opencv.ts, the risk wasn't worth it for something this deep in
+// MediaPipe's internals that couldn't be verified end-to-end without a real device in the loop.
+// Use gzip_static on the server instead (see public/mediapipe/wasm/*.gz, already vendored).
 async function initFaceDetector(): Promise<FaceDetector> {
   const fileset = await FilesetResolver.forVisionTasks(WASM_BASE_URL);
   return FaceDetector.createFromOptions(fileset, {
@@ -49,7 +55,12 @@ async function initFaceDetector(): Promise<FaceDetector> {
 export async function loadFaceDetector(): Promise<void> {
   if (detector) return;
   if (!loadingPromise) {
-    loadingPromise = initFaceDetector();
+    // On failure, clear the cached promise so the next call (e.g. a user-triggered retry)
+    // starts a fresh attempt instead of re-awaiting the same rejected promise forever.
+    loadingPromise = initFaceDetector().catch((err) => {
+      loadingPromise = null;
+      throw err;
+    });
   }
   detector = await loadingPromise;
 }
