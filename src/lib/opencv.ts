@@ -2,9 +2,11 @@
 export type CV = any;
 
 // Served as a static file (copied from node_modules/@techstark/opencv-js/dist/opencv.js) and
-// loaded via <script> instead of `import`, mirroring faceDetector.ts's approach for MediaPipe.
-// A bundler `import` would inline this 13MB UMD file (WASM included as base64) straight into
-// the DocumentVerifyScreen JS chunk — this way it's a separate, independently cacheable request.
+// loaded via <script> instead of `import`. A bundler `import` would inline this 13MB UMD file
+// (WASM included as base64) straight into the DocumentVerifyScreen JS chunk — this way it's a
+// separate, independently cacheable request. (faceDetector.ts used to mirror this approach for
+// MediaPipe's WASM; on this branch it's a plain `import` of @vladmandic/face-api instead, since
+// that library's TF.js+WebGL runtime doesn't have OpenCV's 13MB-single-file problem.)
 // Version-tagged so a long-lived Cache-Control on the server can't strand a client on a stale
 // copy — bump this (matching the @techstark/opencv-js version) whenever the vendored file changes.
 //

@@ -37,20 +37,11 @@ export function isReturnTrip(ticket: Ticket): boolean {
   return ticket.routeCode.startsWith(RETURN_ROUTE_PREFIX);
 }
 
-/** Human-readable route label for a raw route code like "VT-CD" or "CD-VT". */
-export function routeLabel(routeCode: string): string {
-  const code = routeCode.trim().toUpperCase();
-  if (code === 'VT-CD') return 'VŨNG TÀU → CÔN ĐẢO';
-  if (code === 'CD-VT') return 'CÔN ĐẢO → VŨNG TÀU';
-  return routeCode;
-}
-
-/** Generates the e-ID pass code shown on the success screen, e.g. "VT-CD-2026-08-04-12A". */
+/** Generates the e-ID pass code shown on the success screen, e.g. "VT-CD-2026-08-04-EN16". */
 export function generatePassCode(ticket: Ticket): string {
   const direction = isReturnTrip(ticket) ? 'CD-VT' : 'VT-CD';
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const suffix = Math.random().toString(36).slice(2, 4).toUpperCase();
-  return `${direction}-${datePart}-${pad(now.getHours())}${suffix}`;
+  return `${direction}-${datePart}-${ticket.seat}`;
 }

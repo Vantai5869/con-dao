@@ -57,6 +57,7 @@ const vi = {
   'document.tabPassport': 'Hộ chiếu',
   'document.placeHint': 'Đặt giấy tờ nằm ngang trong khung. Đảm bảo rõ nét, không bị chói',
   'document.errorNotRecognized': 'Không ghi nhận được giấy tờ',
+  'document.backSideHint': 'Đã chụp mặt trước. Tiếp theo, chụp mặt sau.',
 
   'success.title': 'KHAI BÁO THÀNH CÔNG!',
   'success.subtitle': 'Bạn có thể tiến đến cổng soát vé tự động.',
@@ -69,6 +70,7 @@ const vi = {
   'common.uploading': 'Đang tải ảnh lên...',
   'common.unexpectedError': 'Đã có lỗi xảy ra. Vui lòng thử lại.',
   'common.cameraError': 'Không thể truy cập camera.',
+  'common.retry': 'Thử lại',
 } as const;
 
 export type TranslationKey = keyof typeof vi;
@@ -128,6 +130,7 @@ const en: Record<TranslationKey, string> = {
   'document.tabPassport': 'Passport',
   'document.placeHint': "Place the document horizontally in the frame. Make sure it's clear and glare-free",
   'document.errorNotRecognized': 'Document not recognized',
+  'document.backSideHint': 'Front side captured. Next, capture the back side.',
 
   'success.title': 'CHECK-IN SUCCESSFUL!',
   'success.subtitle': 'You may now proceed to the automatic ticket gate.',
@@ -140,6 +143,7 @@ const en: Record<TranslationKey, string> = {
   'common.uploading': 'Uploading photo...',
   'common.unexpectedError': 'Something went wrong. Please try again.',
   'common.cameraError': 'Unable to access the camera.',
+  'common.retry': 'Retry',
 };
 
 const zh: Record<TranslationKey, string> = {
@@ -197,6 +201,7 @@ const zh: Record<TranslationKey, string> = {
   'document.tabPassport': '护照',
   'document.placeHint': '请将证件水平放入取景框，确保清晰且无反光',
   'document.errorNotRecognized': '无法识别证件信息',
+  'document.backSideHint': '正面已拍摄。接下来请拍摄反面。',
 
   'success.title': '验证成功！',
   'success.subtitle': '您现在可以前往自动检票闸机。',
@@ -209,6 +214,7 @@ const zh: Record<TranslationKey, string> = {
   'common.uploading': '正在上传照片...',
   'common.unexpectedError': '发生错误，请重试。',
   'common.cameraError': '无法访问摄像头。',
+  'common.retry': '重试',
 };
 
 const ja: Record<TranslationKey, string> = {
@@ -266,6 +272,7 @@ const ja: Record<TranslationKey, string> = {
   'document.tabPassport': 'パスポート',
   'document.placeHint': '書類を横向きにしてフレーム内に置き、鮮明で反射のない状態にしてください',
   'document.errorNotRecognized': '書類を認識できませんでした',
+  'document.backSideHint': '表面を撮影しました。次に裏面を撮影してください。',
 
   'success.title': '確認が完了しました！',
   'success.subtitle': '自動改札へお進みください。',
@@ -278,6 +285,7 @@ const ja: Record<TranslationKey, string> = {
   'common.uploading': '写真をアップロード中...',
   'common.unexpectedError': 'エラーが発生しました。もう一度お試しください。',
   'common.cameraError': 'カメラにアクセスできません。',
+  'common.retry': '再試行',
 };
 
 const ko: Record<TranslationKey, string> = {
@@ -335,6 +343,7 @@ const ko: Record<TranslationKey, string> = {
   'document.tabPassport': '여권',
   'document.placeHint': '서류를 가로로 프레임 안에 놓고 선명하게, 빛 반사가 없도록 해주세요',
   'document.errorNotRecognized': '서류를 인식할 수 없습니다',
+  'document.backSideHint': '앞면을 촬영했습니다. 다음은 뒷면을 촬영하세요.',
 
   'success.title': '확인 완료!',
   'success.subtitle': '이제 자동 개찰구로 이동하실 수 있습니다.',
@@ -347,6 +356,7 @@ const ko: Record<TranslationKey, string> = {
   'common.uploading': '사진 업로드 중...',
   'common.unexpectedError': '오류가 발생했습니다. 다시 시도해 주세요.',
   'common.cameraError': '카메라에 접근할 수 없습니다.',
+  'common.retry': '다시 시도',
 };
 
 const dictionaries: Record<Lang, Record<TranslationKey, string>> = { vi, en, zh, ja, ko };

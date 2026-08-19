@@ -10,7 +10,7 @@ import { ResumeStepDialog } from './ResumeStepDialog';
 import { StepHeader } from './StepHeader';
 import { useTranslation } from '../lib/i18n';
 import { parseTicketInfo, type Ticket } from '../lib/ticket';
-import { ApiError, registerTransaction } from '../lib/api';
+import { ApiError, CONNECTION_ERROR_MESSAGE, registerTransaction } from '../lib/api';
 
 export type QrConfirmedStep = 'face' | 'document';
 
@@ -27,6 +27,7 @@ export function QrScanScreen({ onConfirmed, onCancel }: QrScanScreenProps) {
   const frameRef = useRef<HTMLDivElement>(null);
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [rawTicketInfo, setRawTicketInfo] = useState<string | null>(null);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [nextStep, setNextStep] = useState<2 | 3>(2);
   const [registering, setRegistering] = useState(false);
@@ -34,18 +35,12 @@ export function QrScanScreen({ onConfirmed, onCancel }: QrScanScreenProps) {
   const [showResumeChoice, setShowResumeChoice] = useState(false);
   const [scanKey, setScanKey] = useState(0);
 
-  const handleDecoded = useCallback(
+  const register = useCallback(
     async (raw: string) => {
-      const parsed = parseTicketInfo(raw);
-      if (!parsed) {
-        setErrorMessage(t('qr.errorInvalid'));
-        return;
-      }
-
+      setErrorMessage(null);
       setRegistering(true);
       try {
         const result = await registerTransaction(raw, lang);
-        setTicket(parsed);
         setTransactionId(result.transactionId);
         setNextStep(result.nextStep);
       } catch (err) {
@@ -57,13 +52,39 @@ export function QrScanScreen({ onConfirmed, onCancel }: QrScanScreenProps) {
     [t, lang],
   );
 
+  const handleDecoded = useCallback(
+    (raw: string) => {
+      const parsed = parseTicketInfo(raw);
+      if (!parsed) {
+        setErrorMessage(t('qr.errorInvalid'));
+        return;
+      }
+
+      // Show the parsed ticket right away — it's already fully known from the QR itself — while
+      // the backend registration (needed for transactionId/nextStep) runs in the background.
+      setTicket(parsed);
+      setRawTicketInfo(raw);
+      register(raw);
+    },
+    [t, register],
+  );
+
   const handleRescan = useCallback(() => {
     setErrorMessage(null);
     setTicket(null);
+    setRawTicketInfo(null);
     setTransactionId(null);
     setShowResumeChoice(false);
     setScanKey((k) => k + 1);
   }, []);
+
+  // A connection error after the ticket's already been decoded doesn't need a fresh scan — the QR
+  // content is still known, so "Retry" just re-registers with it instead of restarting the camera.
+  const handleRetryRegister = useCallback(() => {
+    if (rawTicketInfo) register(rawTicketInfo);
+  }, [rawTicketInfo, register]);
+
+  const isConnectionError = errorMessage === CONNECTION_ERROR_MESSAGE;
 
   const handleNext = useCallback(() => {
     if (nextStep === 3) {
@@ -92,22 +113,18 @@ export function QrScanScreen({ onConfirmed, onCancel }: QrScanScreenProps) {
           containerRef={containerRef}
           quad={null}
           tone="idle"
-          statusText={ticket || errorMessage ? '' : registering ? t('qr.registering') : statusText}
+          statusText={ticket || errorMessage ? '' : statusText}
           progress={0}
         />
       </CameraView>
 
-      {cameraReady && !ticket && !errorMessage && !registering && (
-        <QrScannerScreen
-          key={scanKey}
-          videoRef={videoRef}
-          containerRef={containerRef}
-          frameRef={frameRef}
-          onDecoded={handleDecoded}
-        />
+      {cameraReady && !ticket && !errorMessage && (
+        <QrScannerScreen key={scanKey} videoRef={videoRef} containerRef={containerRef} onDecoded={handleDecoded} />
       )}
 
-      {ticket && !showResumeChoice && <TicketSummaryCard ticket={ticket} onNext={handleNext} onRescan={handleRescan} />}
+      {ticket && !showResumeChoice && (
+        <TicketSummaryCard ticket={ticket} pending={registering} onNext={handleNext} onRescan={handleRescan} />
+      )}
 
       {showResumeChoice && ticket && transactionId && (
         <ResumeStepDialog
@@ -116,7 +133,14 @@ export function QrScanScreen({ onConfirmed, onCancel }: QrScanScreenProps) {
         />
       )}
 
-      {errorMessage && <ErrorDialog message={errorMessage} onRescan={handleRescan} onHome={onCancel} />}
+      {errorMessage && (
+        <ErrorDialog
+          message={errorMessage}
+          rescanLabel={isConnectionError ? t('common.retry') : undefined}
+          onRescan={isConnectionError && rawTicketInfo ? handleRetryRegister : handleRescan}
+          onHome={onCancel}
+        />
+      )}
     </>
   );
 }

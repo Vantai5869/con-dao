@@ -12,12 +12,11 @@ const REQUIRED_CONSECUTIVE_READS = 2;
 interface QrScannerScreenProps {
   videoRef: RefObject<HTMLVideoElement | null>;
   containerRef: RefObject<HTMLDivElement | null>;
-  frameRef: RefObject<HTMLDivElement | null>;
   onDecoded: (raw: string) => void;
 }
 
-/** Logic-only: runs the QR-decode loop constrained to the guide region. Renders nothing. */
-export function QrScannerScreen({ videoRef, containerRef, frameRef, onDecoded }: QrScannerScreenProps) {
+/** Logic-only: runs the QR-decode loop over the whole visible camera view (not just the guide brackets — those are visual guidance only). Renders nothing. */
+export function QrScannerScreen({ videoRef, containerRef, onDecoded }: QrScannerScreenProps) {
   useEffect(() => {
     let lastRaw: string | null = null;
     let count = 0;
@@ -28,10 +27,9 @@ export function QrScannerScreen({ videoRef, containerRef, frameRef, onDecoded }:
 
       const video = videoRef.current;
       const container = containerRef.current;
-      const frame = frameRef.current;
-      if (!video || !container || !frame || video.readyState < 2) return;
+      if (!video || !container || video.readyState < 2) return;
 
-      const rect = computeSourceRect(video, container, frame);
+      const rect = computeSourceRect(video, container, container);
       const regionCanvas = drawRegionToCanvas(video, rect, DETECTION_LONG_EDGE);
       const raw = detectQrCode(regionCanvas);
 
@@ -49,7 +47,7 @@ export function QrScannerScreen({ videoRef, containerRef, frameRef, onDecoded }:
     }, TICK_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [videoRef, containerRef, frameRef, onDecoded]);
+  }, [videoRef, containerRef, onDecoded]);
 
   return null;
 }

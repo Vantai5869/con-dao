@@ -13,7 +13,7 @@ import { loadOpenCv } from '../lib/opencv';
 import { canvasToBlob, computeSourceRect, drawRegionToCanvas } from '../lib/captureUtils';
 import { useTranslation, type TranslationKey } from '../lib/i18n';
 import type { ScanTick } from '../lib/stabilityMachine';
-import { ApiError, uploadPhoto } from '../lib/api';
+import { ApiError, CONNECTION_ERROR_MESSAGE, uploadPhoto } from '../lib/api';
 
 const SUCCESS_HOLD_MS = 700;
 
@@ -190,7 +190,14 @@ export function FaceVerifyScreen({ transactionId, onSuccess, onCancel }: FaceVer
       )}
 
       {faceError && <ErrorDialog message={t(faceErrorMessageKey(faceError))} onRescan={handleRetry} onHome={onCancel} />}
-      {uploadErrorMessage && <ErrorDialog message={uploadErrorMessage} onRescan={handleRetry} onHome={onCancel} />}
+      {uploadErrorMessage && (
+        <ErrorDialog
+          message={uploadErrorMessage}
+          rescanLabel={uploadErrorMessage === CONNECTION_ERROR_MESSAGE ? t('common.retry') : undefined}
+          onRescan={handleRetry}
+          onHome={onCancel}
+        />
+      )}
     </>
   );
 }

@@ -61,7 +61,7 @@ export function FaceScannerScreen({
 
       try {
         const rect = computeSourceRect(video, container, frame);
-        const detection = detectFace(video);
+        const detection = await detectFace(video);
         const qualifies =
           detection != null && detection.confidence >= MIN_CONFIDENCE && isWellPositioned(detection.box, rect);
         const quad: Quad | null = qualifies ? boxToQuad(detection!.box) : null;

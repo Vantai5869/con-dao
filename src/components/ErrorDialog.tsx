@@ -2,12 +2,14 @@ import { useTranslation } from '../lib/i18n';
 
 interface ErrorDialogProps {
   message: string;
+  /** Overrides the primary button's label — e.g. "Retry" instead of "Rescan" for a connection failure, where scanning again isn't actually what's being retried. Defaults to the rescan label. */
+  rescanLabel?: string;
   onRescan: () => void;
   onHome?: () => void;
 }
 
 /** Centered modal shown when a scan/capture step fails validation (invalid QR, face mismatch, unreadable document, ...). */
-export function ErrorDialog({ message, onRescan, onHome }: ErrorDialogProps) {
+export function ErrorDialog({ message, rescanLabel, onRescan, onHome }: ErrorDialogProps) {
   const { t } = useTranslation();
 
   return (
@@ -29,7 +31,7 @@ export function ErrorDialog({ message, onRescan, onHome }: ErrorDialogProps) {
             </button>
           )}
           <button type="button" className="primary-btn error-dialog__btn" onClick={onRescan}>
-            {t('qr.rescan')}
+            {rescanLabel ?? t('qr.rescan')}
           </button>
         </div>
       </div>

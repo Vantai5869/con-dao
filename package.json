@@ -10,8 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mediapipe/tasks-vision": "^1.0.1",
     "@techstark/opencv-js": "^5.0.0-release.1",
+    "@vladmandic/face-api": "^1.7.15",
     "jsqr": "^1.4.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

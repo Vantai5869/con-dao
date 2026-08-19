@@ -1,14 +1,16 @@
 import { useTranslation } from '../lib/i18n';
-import { routeLabel, type Ticket } from '../lib/ticket';
+import type { Ticket } from '../lib/ticket';
 
 interface TicketSummaryCardProps {
   ticket: Ticket;
+  /** True while the transaction is still registering with the backend — "Next" needs its transactionId first. */
+  pending: boolean;
   onNext: () => void;
   onRescan: () => void;
 }
 
 /** Replaces the camera view after a ticket QR is successfully decoded, showing the parsed info for confirmation. */
-export function TicketSummaryCard({ ticket, onNext, onRescan }: TicketSummaryCardProps) {
+export function TicketSummaryCard({ ticket, pending, onNext, onRescan }: TicketSummaryCardProps) {
   const { t } = useTranslation();
 
   return (
@@ -41,7 +43,7 @@ export function TicketSummaryCard({ ticket, onNext, onRescan }: TicketSummaryCar
           </div>
           <div className="ticket-summary__row">
             <dt>{t('qr.route')}</dt>
-            <dd>{routeLabel(ticket.routeCode)}</dd>
+            <dd>{ticket.routeCode}</dd>
           </div>
         </dl>
       </div>
@@ -50,8 +52,8 @@ export function TicketSummaryCard({ ticket, onNext, onRescan }: TicketSummaryCar
         ↻ {t('qr.rescanHint')}
       </button>
 
-      <button type="button" className="primary-btn ticket-summary__next" onClick={onNext}>
-        {t('qr.nextStep')}
+      <button type="button" className="primary-btn ticket-summary__next" onClick={onNext} disabled={pending}>
+        {pending ? t('qr.registering') : t('qr.nextStep')}
       </button>
     </div>
   );

@@ -8,6 +8,9 @@ const API_KEY = import.meta.env.VITE_API_KEY ?? '1';
 
 export class ApiError extends Error {}
 
+/** Thrown for network-level failures (fetch rejected, or a response that isn't valid JSON) — as opposed to a business error the backend reported deliberately. Exported so screens can show "Retry" instead of "Rescan" for this specific case. */
+export const CONNECTION_ERROR_MESSAGE = 'Không thể kết nối máy chủ. Vui lòng thử lại.';
+
 // The backend only localizes messages in vi/en — any other app language falls back to en.
 function toApiLang(lang: Lang): 'vi' | 'en' {
   return lang === 'vi' ? 'vi' : 'en';
@@ -21,7 +24,7 @@ async function parseJsonSafely(res: Response): Promise<Record<string, unknown>> 
   try {
     return await res.json();
   } catch {
-    throw new ApiError('Không thể kết nối máy chủ. Vui lòng thử lại.');
+    throw new ApiError(CONNECTION_ERROR_MESSAGE);
   }
 }
 
@@ -34,7 +37,7 @@ async function postJson(path: string, body: unknown, lang: Lang): Promise<Record
       body: JSON.stringify(body),
     });
   } catch {
-    throw new ApiError('Không thể kết nối máy chủ. Vui lòng thử lại.');
+    throw new ApiError(CONNECTION_ERROR_MESSAGE);
   }
   return parseJsonSafely(res);
 }
@@ -79,7 +82,7 @@ export async function uploadPhoto(file: Blob, type: UploadType, transactionId: s
       body: form,
     });
   } catch {
-    throw new ApiError('Không thể kết nối máy chủ. Vui lòng thử lại.');
+    throw new ApiError(CONNECTION_ERROR_MESSAGE);
   }
 
   const body = await parseJsonSafely(res);
@@ -98,7 +101,7 @@ export async function getImageUrl(path: string, lang: Lang): Promise<string> {
       headers: baseHeaders(lang),
     });
   } catch {
-    throw new ApiError('Không thể kết nối máy chủ. Vui lòng thử lại.');
+    throw new ApiError(CONNECTION_ERROR_MESSAGE);
   }
   if (!res.ok) {
     throw new ApiError('Không thể tải ảnh.');

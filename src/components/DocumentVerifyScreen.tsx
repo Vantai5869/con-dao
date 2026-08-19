@@ -31,6 +31,7 @@ interface DocumentVerifyScreenProps {
 type Side = 'front' | 'back';
 
 const FRONT_CAPTURED_ANIMATION_MS = 600;
+const BACK_SIDE_HINT_MS = 2200;
 
 function uploadTypeFor(docType: DocType, side: Side): UploadType {
   if (docType === 'passport') return 'PASSPORT';
@@ -47,6 +48,9 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
   const [cvError, setCvError] = useState<string | null>(null);
   const [detectError, setDetectError] = useState<string | null>(null);
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null);
+  // The capture whose upload hasn't been confirmed yet — kept so a failed upload can be retried
+  // with the same photo instead of forcing a recapture.
+  const [pendingUpload, setPendingUpload] = useState<{ blob: Blob; type: UploadType } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [scanTick, setScanTick] = useState<ScanTick>({ status: 'no_document', progress: 0, quad: null });
 
@@ -54,8 +58,14 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
   const [side, setSide] = useState<Side>('front');
   const [frontBlob, setFrontBlob] = useState<Blob | null>(null);
   const [frontJustCaptured, setFrontJustCaptured] = useState(false);
+  const [showBackSideHint, setShowBackSideHint] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const frontThumbUrl = useObjectUrl(frontBlob);
+  const pendingUploadUrl = useObjectUrl(pendingUpload?.blob ?? null);
+  // The back/passport shot is the final one for this document — freeze it full-screen with a
+  // spinner while its upload is awaited, so it's obvious something is happening instead of
+  // looking like the capture froze (the front shot already gets its own fly-to-slot animation).
+  const showFinalUploadOverlay = uploading && pendingUpload?.type !== 'CC_FRONT';
 
   useEffect(() => {
     loadOpenCv()
@@ -71,27 +81,62 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
   const handleTick = useCallback((tick: ScanTick) => setScanTick(tick), []);
   const handleError = useCallback((message: string) => setDetectError(message), []);
 
-  const handleCaptured = useCallback(
-    async (blob: Blob) => {
+  // The final side of a document (CCCD back, or the only side for a passport) still waits for its
+  // upload before finishing — that response is the last confirmation this document actually made
+  // it to the backend before the flow moves away from this screen entirely.
+  const attemptFinalUpload = useCallback(
+    async (blob: Blob, type: UploadType) => {
       setUploading(true);
       try {
-        await uploadPhoto(blob, uploadTypeFor(docType, side), transactionId, lang);
-        if (docType === 'passport' || side === 'back') {
-          onSuccess({ docType, front: side === 'front' ? blob : (frontBlob as Blob), back: side === 'back' ? blob : undefined });
-          return;
-        }
-        // CCCD front captured: play the "flies into the slot-1 thumbnail" confirmation
-        // before moving on to the back side, so it's obvious the front shot registered.
-        setFrontBlob(blob);
-        setFrontJustCaptured(true);
+        await uploadPhoto(blob, type, transactionId, lang);
+        setPendingUpload(null);
+        onSuccess({ docType, front: type === 'CC_BACK' ? (frontBlob as Blob) : blob, back: type === 'CC_BACK' ? blob : undefined });
       } catch (err) {
         setUploadErrorMessage(err instanceof ApiError ? err.message : t('document.errorNotRecognized'));
       } finally {
         setUploading(false);
       }
     },
-    [docType, side, frontBlob, transactionId, lang, t, onSuccess],
+    [transactionId, lang, docType, frontBlob, onSuccess, t],
   );
+
+  // CCCD front doesn't gate anything — move on to the back side right away and let the upload run
+  // in the background instead of freezing the capture flow on it.
+  const attemptFrontUpload = useCallback(
+    (blob: Blob) => {
+      uploadPhoto(blob, 'CC_FRONT', transactionId, lang)
+        .then(() => setPendingUpload(null))
+        .catch((err) => setUploadErrorMessage(err instanceof ApiError ? err.message : t('document.errorNotRecognized')));
+    },
+    [transactionId, lang, t],
+  );
+
+  const handleCaptured = useCallback(
+    (blob: Blob) => {
+      const type = uploadTypeFor(docType, side);
+      setPendingUpload({ blob, type });
+
+      if (type === 'CC_FRONT') {
+        setFrontBlob(blob);
+        setFrontJustCaptured(true);
+        attemptFrontUpload(blob);
+        return;
+      }
+
+      attemptFinalUpload(blob, type);
+    },
+    [docType, side, attemptFrontUpload, attemptFinalUpload],
+  );
+
+  const handleUploadRetry = useCallback(() => {
+    if (!pendingUpload) return;
+    setUploadErrorMessage(null);
+    if (pendingUpload.type === 'CC_FRONT') {
+      attemptFrontUpload(pendingUpload.blob);
+    } else {
+      attemptFinalUpload(pendingUpload.blob, pendingUpload.type);
+    }
+  }, [pendingUpload, attemptFrontUpload, attemptFinalUpload]);
 
   useEffect(() => {
     if (!frontJustCaptured) return;
@@ -99,9 +144,16 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
       setFrontJustCaptured(false);
       setSide('back');
       resetScan();
+      setShowBackSideHint(true);
     }, FRONT_CAPTURED_ANIMATION_MS);
     return () => clearTimeout(timer);
   }, [frontJustCaptured, resetScan]);
+
+  useEffect(() => {
+    if (!showBackSideHint) return;
+    const timer = setTimeout(() => setShowBackSideHint(false), BACK_SIDE_HINT_MS);
+    return () => clearTimeout(timer);
+  }, [showBackSideHint]);
 
   const manualCapture = useCallback(async () => {
     const video = videoRef.current;
@@ -153,8 +205,22 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
 
       {docType === 'cccd' && (
         <div className="document-verify__thumbs">
-          <DocThumbSlot index={1} url={frontThumbUrl} onOpen={() => setPreviewOpen(true)} />
-          <DocThumbSlot index={2} url={null} onOpen={() => {}} />
+          <DocThumbSlot
+            index={1}
+            url={frontThumbUrl}
+            loading={pendingUpload?.type === 'CC_FRONT'}
+            onOpen={() => setPreviewOpen(true)}
+          />
+          <DocThumbSlot index={2} url={null} loading={pendingUpload?.type === 'CC_BACK'} onOpen={() => {}} />
+        </div>
+      )}
+
+      {showBackSideHint && (
+        <div className="document-verify__back-hint">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span>{t('document.backSideHint')}</span>
         </div>
       )}
 
@@ -165,7 +231,7 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
           containerRef={containerRef}
           quad={scanTick.quad}
           tone={tone}
-          statusText={detectError || uploadErrorMessage ? '' : statusText}
+          statusText={detectError || uploadErrorMessage || showFinalUploadOverlay ? '' : statusText}
           progress={scanTick.progress}
           barBottom={88}
         />
@@ -173,6 +239,16 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
         {frontJustCaptured && frontThumbUrl && (
           <div className="document-verify__front-flash">
             <img className="document-verify__front-fly" src={frontThumbUrl} alt="" />
+          </div>
+        )}
+
+        {showFinalUploadOverlay && pendingUploadUrl && (
+          <div className="document-verify__frozen">
+            <img src={pendingUploadUrl} alt="" />
+            <div className="document-verify__uploading">
+              <span className="document-verify__uploading-spinner" />
+              <span>{t('common.uploading')}</span>
+            </div>
           </div>
         )}
       </CameraView>
@@ -220,7 +296,14 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
         <ErrorDialog message={t('document.errorNotRecognized')} onRescan={handleRetry} onHome={onCancel} />
       )}
 
-      {uploadErrorMessage && <ErrorDialog message={uploadErrorMessage} onRescan={handleRetry} onHome={onCancel} />}
+      {uploadErrorMessage && (
+        <ErrorDialog
+          message={uploadErrorMessage}
+          rescanLabel={t('common.retry')}
+          onRescan={handleUploadRetry}
+          onHome={onCancel}
+        />
+      )}
 
       {previewOpen && frontThumbUrl && (
         <div className="document-verify__preview-backdrop" onClick={() => setPreviewOpen(false)}>
@@ -235,7 +318,17 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
 }
 
 /** One slot in the "side 1 / side 2" progress strip shown while capturing a CCCD's front and back; captured slots are tappable to view the photo again. */
-function DocThumbSlot({ index, url, onOpen }: { index: number; url: string | null; onOpen: () => void }) {
+function DocThumbSlot({
+  index,
+  url,
+  loading,
+  onOpen,
+}: {
+  index: number;
+  url: string | null;
+  loading?: boolean;
+  onOpen: () => void;
+}) {
   const content = (
     <>
       {url ? (
@@ -246,6 +339,11 @@ function DocThumbSlot({ index, url, onOpen }: { index: number; url: string | nul
         </span>
       )}
       <span className="document-verify__thumb-number">{index}</span>
+      {loading && (
+        <span className="document-verify__thumb-loading">
+          <span className="document-verify__thumb-spinner" />
+        </span>
+      )}
     </>
   );
 

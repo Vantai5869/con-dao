@@ -1,4 +1,4 @@
-import { FilesetResolver, FaceDetector, type BoundingBox } from '@mediapipe/tasks-vision';
+import * as faceapi from '@vladmandic/face-api';
 
 export interface FaceBox {
   x: number;
@@ -12,7 +12,6 @@ export interface FacePoint {
   y: number;
 }
 
-// BlazeFace's fixed keypoint order: right eye, left eye, nose tip, mouth center, right ear, left ear.
 export interface FaceKeypoints {
   rightEye: FacePoint;
   leftEye: FacePoint;
@@ -22,83 +21,78 @@ export interface FaceKeypoints {
 export interface FaceDetection {
   box: FaceBox;
   confidence: number;
-  /** Video-native pixel coordinates, or null if the model didn't return keypoints for this detection. */
+  /** Video-native pixel coordinates, or null if landmarks weren't returned for this detection. */
   keypoints: FaceKeypoints | null;
 }
 
-// WASM runtime + model are served from our own /public/mediapipe (copied from
-// node_modules/@mediapipe/tasks-vision/wasm and downloaded from Google's model
-// storage respectively) instead of a CDN, so there's no first-load network
-// fetch to a third party. Kept as separate static assets (not bundled into the
-// JS build) — unlike @techstark/opencv-js, which inlines its WASM into one huge
-// JS file — so this doesn't repeat the earlier opencv.js dev-bundle size problem.
-const WASM_BASE_URL = '/mediapipe/wasm';
-const MODEL_URL = '/mediapipe/models/blaze_face_short_range.tflite';
+// EXPERIMENTAL (branch: experiment/faceapi-lite): swapped MediaPipe's tasks-vision FaceDetector
+// for @vladmandic/face-api (TensorFlow.js + WebGL) to cut the model-loading payload — MediaPipe's
+// generic vision-task WASM runtime alone is ~11.7MB uncompressed, dwarfing the actual face model
+// (229KB); face-api's tiny detector + tiny landmark model together are under 300KB, and its
+// TF.js+WebGL "engine" runs on the GPU instead of shipping a multi-megabyte WASM binary — so the
+// whole thing is small without needing any server-side gzip config. See public/faceapi/ for the
+// vendored model files (tiny_face_detector + face_landmark_68_tiny, downloaded from the
+// vladmandic/face-api repo's own model/ folder).
+const MODEL_URL = '/faceapi';
 
-let detector: FaceDetector | null = null;
-let loadingPromise: Promise<FaceDetector> | null = null;
+let modelsLoaded = false;
+let loadingPromise: Promise<void> | null = null;
 
-// A variant of this function tried building a manual WasmFileset from client-side-decompressed
-// .gz siblings (via DecompressionStream + blob URLs) to cut the ~12MB transfer without needing
-// server-side gzip. Reverted after it caused a blank/crashed screen on real-device testing —
-// paired with the same issue in opencv.ts, the risk wasn't worth it for something this deep in
-// MediaPipe's internals that couldn't be verified end-to-end without a real device in the loop.
-// Use gzip_static on the server instead (see public/mediapipe/wasm/*.gz, already vendored).
-async function initFaceDetector(): Promise<FaceDetector> {
-  const fileset = await FilesetResolver.forVisionTasks(WASM_BASE_URL);
-  return FaceDetector.createFromOptions(fileset, {
-    baseOptions: { modelAssetPath: MODEL_URL },
-    runningMode: 'VIDEO',
-  });
+async function initFaceDetector(): Promise<void> {
+  await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+  await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
 }
 
 export async function loadFaceDetector(): Promise<void> {
-  if (detector) return;
+  if (modelsLoaded) return;
   if (!loadingPromise) {
     // On failure, clear the cached promise so the next call (e.g. a user-triggered retry)
     // starts a fresh attempt instead of re-awaiting the same rejected promise forever.
-    loadingPromise = initFaceDetector().catch((err) => {
-      loadingPromise = null;
-      throw err;
-    });
+    loadingPromise = initFaceDetector()
+      .then(() => {
+        modelsLoaded = true;
+      })
+      .catch((err) => {
+        loadingPromise = null;
+        throw err;
+      });
   }
-  detector = await loadingPromise;
+  await loadingPromise;
 }
 
-/** Returns the highest-confidence face detected in the current video frame, in video-native pixel coordinates. */
-export function detectFace(video: HTMLVideoElement): FaceDetection | null {
-  if (!detector) {
+const DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+
+/**
+ * Returns the highest-confidence face detected in the current video frame, in video-native pixel
+ * coordinates. Unlike MediaPipe's synchronous `detectForVideo`, TensorFlow.js inference is
+ * inherently async (WebGL readback) — callers already run their detection loop from an async
+ * interval callback (see FaceScannerScreen.tsx), so this only required adding an `await` there.
+ */
+export async function detectFace(video: HTMLVideoElement): Promise<FaceDetection | null> {
+  if (!modelsLoaded) {
     throw new Error('Face detector chưa được load. Gọi loadFaceDetector() trước.');
   }
 
-  const result = detector.detectForVideo(video, performance.now());
-  if (result.detections.length === 0) return null;
+  const result = await faceapi.detectSingleFace(video, DETECTOR_OPTIONS).withFaceLandmarks(true);
+  if (!result) return null;
 
-  let best = result.detections[0];
-  for (const detection of result.detections) {
-    if ((detection.categories[0]?.score ?? 0) > (best.categories[0]?.score ?? 0)) {
-      best = detection;
-    }
-  }
-
-  const boundingBox: BoundingBox | undefined = best.boundingBox;
-  if (!boundingBox) return null;
-
-  const [rightEye, leftEye, , mouth] = best.keypoints;
-  const keypoints: FaceKeypoints | null =
-    rightEye && leftEye && mouth
-      ? {
-          rightEye: { x: rightEye.x * video.videoWidth, y: rightEye.y * video.videoHeight },
-          leftEye: { x: leftEye.x * video.videoWidth, y: leftEye.y * video.videoHeight },
-          mouth: { x: mouth.x * video.videoWidth, y: mouth.y * video.videoHeight },
-        }
-      : null;
+  const { box, score } = result.detection;
+  const keypoints: FaceKeypoints = {
+    rightEye: averagePoint(result.landmarks.getRightEye()),
+    leftEye: averagePoint(result.landmarks.getLeftEye()),
+    mouth: averagePoint(result.landmarks.getMouth()),
+  };
 
   return {
-    box: { x: boundingBox.originX, y: boundingBox.originY, width: boundingBox.width, height: boundingBox.height },
-    confidence: best.categories[0]?.score ?? 0,
+    box: { x: box.x, y: box.y, width: box.width, height: box.height },
+    confidence: score,
     keypoints,
   };
+}
+
+function averagePoint(points: faceapi.Point[]): FacePoint {
+  const sum = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+  return { x: sum.x / points.length, y: sum.y / points.length };
 }
 
 const EYE_SAMPLE_RATIO = 0.09; // half-width of the eye sample box, as a fraction of the eye-to-eye distance
