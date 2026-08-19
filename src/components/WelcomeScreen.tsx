@@ -30,7 +30,7 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
     // even if the prefetch is slow (see CheckInFlow.tsx's lazy-loading comment for the bug this
     // avoids repeating). Failures are ignored here; each screen retries and surfaces its own error.
     import('../lib/faceDetector').then((m) => m.loadFaceDetector()).catch(() => {});
-    import('../lib/opencv').then((m) => m.loadOpenCv()).catch(() => {});
+    import('../lib/documentDetector').then((m) => m.loadDocumentScanner()).catch(() => {});
   }, []);
 
   return (

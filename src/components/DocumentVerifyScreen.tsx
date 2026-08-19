@@ -8,7 +8,7 @@ import { ScannerScreen } from './ScannerScreen';
 import { CameraIcon } from './CameraIcon';
 import { ErrorDialog } from './ErrorDialog';
 import { StepHeader } from './StepHeader';
-import { loadOpenCv } from '../lib/opencv';
+import { loadDocumentScanner } from '../lib/documentDetector';
 import { warpToBlob } from '../lib/perspective';
 import { canvasToBlob, computeSourceRect, drawRegionToCanvas } from '../lib/captureUtils';
 import { useTranslation } from '../lib/i18n';
@@ -31,7 +31,11 @@ interface DocumentVerifyScreenProps {
 type Side = 'front' | 'back';
 
 const FRONT_CAPTURED_ANIMATION_MS = 600;
-const BACK_SIDE_HINT_MS = 2200;
+// Time given to physically flip the card over before auto-scan re-engages — real people take a
+// couple of seconds to flip and reposition a physical card, not milliseconds. The scanner is
+// paused for this whole window (see the `!showBackSideHint` guard below), not just showing a
+// message, so a still-mid-flip card can't get auto-captured as a blurry false positive.
+const BACK_SIDE_HINT_MS = 3000;
 
 function uploadTypeFor(docType: DocType, side: Side): UploadType {
   if (docType === 'passport') return 'PASSPORT';
@@ -44,8 +48,8 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
 
-  const [cvReady, setCvReady] = useState(false);
-  const [cvError, setCvError] = useState<string | null>(null);
+  const [scannerReady, setScannerReady] = useState(false);
+  const [scannerError, setScannerError] = useState<string | null>(null);
   const [detectError, setDetectError] = useState<string | null>(null);
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null);
   // The capture whose upload hasn't been confirmed yet — kept so a failed upload can be retried
@@ -68,9 +72,9 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
   const showFinalUploadOverlay = uploading && pendingUpload?.type !== 'CC_FRONT';
 
   useEffect(() => {
-    loadOpenCv()
-      .then(() => setCvReady(true))
-      .catch((err) => setCvError(err instanceof Error ? err.message : 'Không thể tải OpenCV.'));
+    loadDocumentScanner()
+      .then(() => setScannerReady(true))
+      .catch((err) => setScannerError(err instanceof Error ? err.message : 'Không thể tải mô hình nhận diện giấy tờ.'));
   }, []);
 
   const resetScan = useCallback(() => {
@@ -128,15 +132,23 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
     [docType, side, attemptFrontUpload, attemptFinalUpload],
   );
 
-  const handleUploadRetry = useCallback(() => {
-    if (!pendingUpload) return;
+  // A failed upload (network hiccup or the backend rejecting the photo itself, e.g. OCR
+  // couldn't read it) always leads back to recapturing rather than resending the same photo —
+  // simpler than trying to tell those two cases apart, and a recapture costs the user almost
+  // nothing. If it was the front side that failed (and the flow had already moved on to
+  // capturing the back in the background), jump back to front to redo it.
+  const handleUploadRecapture = useCallback(() => {
+    const failedType = pendingUpload?.type;
     setUploadErrorMessage(null);
-    if (pendingUpload.type === 'CC_FRONT') {
-      attemptFrontUpload(pendingUpload.blob);
-    } else {
-      attemptFinalUpload(pendingUpload.blob, pendingUpload.type);
+    setPendingUpload(null);
+    if (failedType === 'CC_FRONT') {
+      setSide('front');
+      setFrontBlob(null);
+      setFrontJustCaptured(false);
+      setShowBackSideHint(false);
     }
-  }, [pendingUpload, attemptFrontUpload, attemptFinalUpload]);
+    resetScan();
+  }, [pendingUpload, resetScan]);
 
   useEffect(() => {
     if (!frontJustCaptured) return;
@@ -189,13 +201,15 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
   );
 
   const cameraReady = cameraStatus === 'ready';
-  const ready = cameraReady && cvReady;
+  const ready = cameraReady && scannerReady;
 
   const title =
     docType === 'passport' ? t('document.passportFront') : side === 'front' ? t('document.cccdFront') : t('document.cccdBack');
   const subtitle = docType === 'passport' ? t('document.passportHint') : t('document.cccdHint');
 
-  const statusText = uploading ? t('common.uploading') : getStatusText({ cameraStatus, cameraError, cvReady, cvError, scanTick, t });
+  const statusText = uploading
+    ? t('common.uploading')
+    : getStatusText({ cameraStatus, cameraError, scannerReady, scannerError, scanTick, t });
   const tone: OverlayTone =
     scanTick.status === 'holding' ? 'holding' : scanTick.status === 'capture' ? 'success' : 'idle';
 
@@ -215,15 +229,6 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
         </div>
       )}
 
-      {showBackSideHint && (
-        <div className="document-verify__back-hint">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          <span>{t('document.backSideHint')}</span>
-        </div>
-      )}
-
       <CameraView containerRef={containerRef} videoRef={videoRef}>
         <GuideFrame frameRef={frameRef} shape="corners-document" tone={tone} />
         <DocumentOverlay
@@ -231,7 +236,7 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
           containerRef={containerRef}
           quad={scanTick.quad}
           tone={tone}
-          statusText={detectError || uploadErrorMessage || showFinalUploadOverlay ? '' : statusText}
+          statusText={detectError || uploadErrorMessage || showFinalUploadOverlay || showBackSideHint ? '' : statusText}
           progress={scanTick.progress}
           barBottom={88}
         />
@@ -239,6 +244,18 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
         {frontJustCaptured && frontThumbUrl && (
           <div className="document-verify__front-flash">
             <img className="document-verify__front-fly" src={frontThumbUrl} alt="" />
+          </div>
+        )}
+
+        {showBackSideHint && (
+          <div className="document-verify__flip-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 2.1l4 4-4 4" />
+              <path d="M3 12.2v-2a4 4 0 0 1 4-4h14" />
+              <path d="M7 21.9l-4-4 4-4" />
+              <path d="M21 11.8v2a4 4 0 0 1-4 4H3" />
+            </svg>
+            <span>{t('document.backSideHint')}</span>
           </div>
         )}
 
@@ -280,7 +297,7 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
         </button>
       )}
 
-      {ready && !frontJustCaptured && !uploading && (
+      {ready && !frontJustCaptured && !uploading && !showBackSideHint && (
         <ScannerScreen
           key={`${docType}-${side}`}
           videoRef={videoRef}
@@ -296,14 +313,7 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
         <ErrorDialog message={t('document.errorNotRecognized')} onRescan={handleRetry} onHome={onCancel} />
       )}
 
-      {uploadErrorMessage && (
-        <ErrorDialog
-          message={uploadErrorMessage}
-          rescanLabel={t('common.retry')}
-          onRescan={handleUploadRetry}
-          onHome={onCancel}
-        />
-      )}
+      {uploadErrorMessage && <ErrorDialog message={uploadErrorMessage} onRescan={handleUploadRecapture} onHome={onCancel} />}
 
       {previewOpen && frontThumbUrl && (
         <div className="document-verify__preview-backdrop" onClick={() => setPreviewOpen(false)}>
@@ -361,17 +371,17 @@ function DocThumbSlot({
 function getStatusText(args: {
   cameraStatus: 'idle' | 'loading' | 'ready' | 'error';
   cameraError: string | null;
-  cvReady: boolean;
-  cvError: string | null;
+  scannerReady: boolean;
+  scannerError: string | null;
   scanTick: ScanTick;
   t: (key: import('../lib/i18n').TranslationKey) => string;
 }): string {
-  const { cameraStatus, cameraError, cvReady, cvError, scanTick, t } = args;
+  const { cameraStatus, cameraError, scannerReady, scannerError, scanTick, t } = args;
 
   if (cameraStatus === 'error') return cameraError ?? t('common.cameraError');
-  if (cvError) return cvError;
+  if (scannerError) return scannerError;
   if (cameraStatus === 'loading') return t('common.loadingCamera');
-  if (!cvReady) return t('common.loadingModel');
+  if (!scannerReady) return t('common.loadingModel');
 
   switch (scanTick.status) {
     case 'no_document':

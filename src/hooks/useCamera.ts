@@ -33,8 +33,12 @@ export function useCamera(enabled: boolean, facingMode: 'user' | 'environment' =
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: facingMode },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            // Captured photos (face + document) are cropped straight out of the video's native
+            // resolution with no upscaling step after — this ceiling is the real sharpness ceiling
+            // for the whole app. "ideal" (not "min"/"exact") so devices that can't hit 1080p just
+            // fall back to their own max instead of throwing OverconstrainedError.
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
           },
           audio: false,
         });

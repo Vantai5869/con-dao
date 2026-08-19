@@ -136,7 +136,7 @@ export function shrinkQuad(points: Point[], factor: number): Point[] {
   }));
 }
 
-export function canvasToBlob(canvas: HTMLCanvasElement, quality = 0.92): Promise<Blob> {
+export function canvasToBlob(canvas: HTMLCanvasElement, quality = 0.95): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('Không thể xuất ảnh từ canvas.'))),

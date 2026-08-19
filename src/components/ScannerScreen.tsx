@@ -44,7 +44,7 @@ export function ScannerScreen({ videoRef, containerRef, frameRef, onTick, onCapt
       try {
         const rect = computeSourceRect(video, container, frame);
         const regionCanvas = drawRegionToCanvas(video, rect, DETECTION_LONG_EDGE);
-        const { quad: rawQuad } = detectDocument(regionCanvas);
+        const { quad: rawQuad } = await detectDocument(regionCanvas);
 
         // Map from region-canvas-local coords back into full video-native coords.
         const scale = rect.sw / regionCanvas.width;

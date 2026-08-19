@@ -34,8 +34,8 @@
     animation-delay: 0s;
   }
 
-  .document-verify__back-hint {
-    animation-name: document-back-hint-fade-reduced;
+  .document-verify__flip-hint {
+    animation-name: document-flip-hint-fade-reduced;
   }
 }
 
@@ -853,43 +853,47 @@
   animation: face-verify-spin 0.8s linear infinite;
 }
 
-/* --- Document verify: brief toast after the front side is captured, pointing at the back side --- */
+/* --- Document verify: prominent centered overlay giving time to flip the card to its back side.
+   Also blocks the auto-scanner (see DocumentVerifyScreen.tsx) for its whole on-screen duration,
+   not just showing a message, so a still-mid-flip card can't get auto-captured as a false positive. --- */
 
-.document-verify__back-hint {
+.document-verify__flip-hint {
   position: absolute;
-  top: calc(128px + env(safe-area-inset-top));
+  top: 50%;
   left: 50%;
-  z-index: 1;
-  transform: translateX(-50%);
+  z-index: 2;
+  transform: translate(-50%, -50%);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 999px;
+  gap: 12px;
+  padding: 20px 26px;
+  border-radius: 16px;
   background: rgba(0, 116, 98, 0.92);
   color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  max-width: 80%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   pointer-events: none;
-  animation: document-back-hint-fade 2.2s ease forwards;
+  animation: document-flip-hint-fade 3s ease forwards;
 }
 
-.document-verify__back-hint svg {
-  width: 16px;
-  height: 16px;
+.document-verify__flip-hint svg {
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
 }
 
-@keyframes document-back-hint-fade {
+@keyframes document-flip-hint-fade {
   0% {
     opacity: 0;
-    transform: translate(-50%, -6px);
+    transform: translate(-50%, -50%) scale(0.9);
   }
   10% {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translate(-50%, -50%) scale(1);
   }
   82% {
     opacity: 1;
@@ -899,7 +903,7 @@
   }
 }
 
-@keyframes document-back-hint-fade-reduced {
+@keyframes document-flip-hint-fade-reduced {
   0%,
   82% {
     opacity: 1;

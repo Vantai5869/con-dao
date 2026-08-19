@@ -10,11 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@techstark/opencv-js": "^5.0.0-release.1",
     "@vladmandic/face-api": "^1.7.15",
     "jsqr": "^1.4.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "scanic": "^1.5.1",
+    "scanic-ml": "^0.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

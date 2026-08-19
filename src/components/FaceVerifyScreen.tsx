@@ -9,7 +9,7 @@ import { CameraIcon } from './CameraIcon';
 import { ErrorDialog } from './ErrorDialog';
 import { StepHeader } from './StepHeader';
 import { loadFaceDetector } from '../lib/faceDetector';
-import { loadOpenCv } from '../lib/opencv';
+import { loadDocumentScanner } from '../lib/documentDetector';
 import { canvasToBlob, computeSourceRect, drawRegionToCanvas } from '../lib/captureUtils';
 import { useTranslation, type TranslationKey } from '../lib/i18n';
 import type { ScanTick } from '../lib/stabilityMachine';
@@ -46,10 +46,10 @@ export function FaceVerifyScreen({ transactionId, onSuccess, onCancel }: FaceVer
     loadFaceDetector()
       .then(() => setModelReady(true))
       .catch((err) => setModelError(err instanceof Error ? err.message : 'Không thể tải mô hình nhận diện khuôn mặt.'));
-    // Fire-and-forget: the document step (if not skipped) needs OpenCV, so start downloading it
-    // now instead of waiting until the user lands there. Errors are surfaced again from
-    // DocumentVerifyScreen's own loadOpenCv() call, so they're safely ignored here.
-    loadOpenCv().catch(() => {});
+    // Fire-and-forget: the document step (if not skipped) needs the document scanner model, so
+    // start downloading it now instead of waiting until the user lands there. Errors are surfaced
+    // again from DocumentVerifyScreen's own loadDocumentScanner() call, so they're safely ignored here.
+    loadDocumentScanner().catch(() => {});
   }, []);
 
   const handleTick = useCallback((tick: ScanTick) => setScanTick(tick), []);
