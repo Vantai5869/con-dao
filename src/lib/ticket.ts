@@ -12,7 +12,9 @@ export interface Ticket {
 
 // The ticket QR encodes a raw ticketInfo string (not JSON), e.g.:
 // "1112C94DB0F5C0FEA162712FFBE9CBA1$VT-CD*09/07/2026 07:30*NGUYEN DUONG TU LINH*EN16*P03009062##"
-const RAW_TICKET_PATTERN = /^([^$]+)\$([^*]+)\*([^*]+)\*([^*]+)\*([^*]+)\*([^#]+)##?$/;
+// The trailing "##" isn't consistent across every ticket/port (e.g. some end with just "#", some
+// with none at all), so it's optional rather than requiring at least one.
+const RAW_TICKET_PATTERN = /^([^$]+)\$([^*]+)\*([^*]+)\*([^*]+)\*([^*]+)\*([^#]+)#*$/;
 
 /** Parses a scanned ticket QR's raw content. Returns null if it doesn't match the expected shape. */
 export function parseTicketInfo(raw: string): Ticket | null {
@@ -30,18 +32,10 @@ export function parseTicketInfo(raw: string): Ticket | null {
   };
 }
 
-const RETURN_ROUTE_PREFIX = 'CD';
-
-/** True if this ticket's route goes from Côn Đảo back to the mainland. */
-export function isReturnTrip(ticket: Ticket): boolean {
-  return ticket.routeCode.startsWith(RETURN_ROUTE_PREFIX);
-}
-
 /** Generates the e-ID pass code shown on the success screen, e.g. "VT-CD-2026-08-04-EN16". */
 export function generatePassCode(ticket: Ticket): string {
-  const direction = isReturnTrip(ticket) ? 'CD-VT' : 'VT-CD';
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  return `${direction}-${datePart}-${ticket.seat}`;
+  return `${ticket.routeCode}-${datePart}-${ticket.seat}`;
 }

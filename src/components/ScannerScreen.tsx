@@ -43,6 +43,11 @@ export function ScannerScreen({ videoRef, containerRef, frameRef, onTick, onCapt
 
       try {
         const rect = computeSourceRect(video, container, frame);
+        // The guide box can briefly report a zero size right as this screen mounts, before layout
+        // has settled — feeding a degenerate crop into the detector throws, which without this
+        // guard surfaced as an immediate "document not recognized" error before the user had done
+        // anything. Just skip this tick and let the next one (300ms later) try again.
+        if (rect.sw <= 0 || rect.sh <= 0) return;
         const regionCanvas = drawRegionToCanvas(video, rect, DETECTION_LONG_EDGE);
         const { quad: rawQuad } = await detectDocument(regionCanvas);
 

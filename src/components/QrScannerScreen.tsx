@@ -3,7 +3,12 @@ import { computeSourceRect, drawRegionToCanvas } from '../lib/captureUtils';
 import { detectQrCode } from '../lib/qrDetector';
 
 const TICK_INTERVAL_MS = 250;
-const DETECTION_LONG_EDGE = 640;
+// Tickets with longer text fields (name, route, etc.) encode into a denser/higher-version QR —
+// 640px wasn't always enough resolution for jsQR to resolve those tickets' modules reliably,
+// even though it was plenty for simpler/sparser ones. Kept well under the CCCD QR step's native-
+// resolution scan (that one crops to a small guide box first; this one scans the whole camera
+// view every tick, so going that far here would cost meaningfully more per-tick CPU).
+const DETECTION_LONG_EDGE = 1280;
 // Require the same decoded string twice in a row before accepting it — cheap
 // debounce against a rare misread, without needing full geometric stability
 // tracking the way document/face detection do.

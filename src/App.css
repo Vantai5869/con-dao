@@ -387,6 +387,81 @@
   height: 26px;
 }
 
+/* --- Document verify: QR tab's up-front choice — capture live or upload an existing photo.
+   Shown instead of the camera view until one is picked, so the camera isn't turned on (and
+   auto-scanning doesn't start) before the user has actually chosen to capture. --- */
+
+.document-verify__file-input {
+  display: none;
+}
+
+.document-verify__qr-choice {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 32px 28px;
+  background: #000;
+  text-align: center;
+}
+
+.document-verify__qr-choice-icon svg {
+  width: 52px;
+  height: 52px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.document-verify__qr-choice-text {
+  margin: 0;
+  max-width: 280px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.document-verify__qr-choice-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 8px;
+}
+
+.document-verify__qr-choice-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px;
+  border-radius: 12px;
+  border: none;
+  background: #007462;
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.document-verify__qr-choice-btn:active {
+  transform: scale(0.98);
+}
+
+.document-verify__qr-choice-btn svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.document-verify__qr-choice-btn--secondary {
+  background: #eef0f1;
+  color: #334155;
+}
+
 /* --- Fixed guide frame: detection is constrained to this region only --- */
 
 .guide-frame {
@@ -976,6 +1051,14 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
+/* The QR capture (front-of-card side or the whole photo) is a square crop, not a 1.5:1 document —
+   forcing it into the document ratio via object-fit: cover was clipping its top/bottom on display,
+   even though the actual uploaded photo was already square. */
+.document-verify__frozen--square img {
+  width: min(70vw, 340px);
+  aspect-ratio: 1;
+}
+
 .document-verify__uploading {
   display: flex;
   flex-direction: column;
@@ -1007,19 +1090,28 @@
   z-index: 1;
   display: flex;
   gap: 4px;
+  width: calc(100% - 16px);
+  max-width: 480px;
   background: rgba(0, 0, 0, 0.5);
   padding: 4px;
-  border-radius: 999px;
+  border-radius: 18px;
 }
 
 .document-verify__type-btn {
-  padding: 8px 18px;
-  border-radius: 999px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 6px;
+  border-radius: 14px;
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
 }
 
 .document-verify__type-btn--active {

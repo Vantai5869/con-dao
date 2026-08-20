@@ -59,7 +59,7 @@ export async function registerTransaction(ticketInfo: string, lang: Lang): Promi
   return { transactionId: data.transactionId, nextStep: data.nexStep };
 }
 
-export type UploadType = 'FACE' | 'CC_FRONT' | 'CC_BACK' | 'PASSPORT';
+export type UploadType = 'FACE' | 'CC_FRONT' | 'CC_BACK' | 'PASSPORT' | 'QR_CC';
 
 export interface UploadResult {
   path: string;

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useCamera } from '../hooks/useCamera';
 import { useObjectUrl } from '../hooks/useObjectUrl';
 import { CameraView } from './CameraView';
 import { GuideFrame } from './GuideFrame';
 import { DocumentOverlay, type OverlayTone } from './DocumentOverlay';
 import { ScannerScreen } from './ScannerScreen';
+import { QrPhotoScannerScreen } from './QrPhotoScannerScreen';
 import { CameraIcon } from './CameraIcon';
 import { ErrorDialog } from './ErrorDialog';
 import { StepHeader } from './StepHeader';
@@ -15,7 +16,7 @@ import { useTranslation } from '../lib/i18n';
 import type { ScanTick } from '../lib/stabilityMachine';
 import { ApiError, uploadPhoto, type UploadType } from '../lib/api';
 
-export type DocType = 'cccd' | 'passport';
+export type DocType = 'cccd' | 'passport' | 'qr';
 export interface DocumentBlobs {
   docType: DocType;
   front: Blob;
@@ -36,17 +37,29 @@ const FRONT_CAPTURED_ANIMATION_MS = 600;
 // paused for this whole window (see the `!showBackSideHint` guard below), not just showing a
 // message, so a still-mid-flip card can't get auto-captured as a blurry false positive.
 const BACK_SIDE_HINT_MS = 3000;
+// The final capture of a document (CCCD back, passport, or the QR photo) is held on screen for at
+// least this long before moving on — without it, a fast upload could make the captured photo feel
+// like it vanished before the user even saw what got sent.
+const MIN_UPLOAD_HOLD_MS = 1000;
 
 function uploadTypeFor(docType: DocType, side: Side): UploadType {
+  if (docType === 'qr') return 'QR_CC';
   if (docType === 'passport') return 'PASSPORT';
   return side === 'front' ? 'CC_FRONT' : 'CC_BACK';
 }
 
 export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: DocumentVerifyScreenProps) {
   const { t, lang } = useTranslation();
-  const { videoRef, status: cameraStatus, error: cameraError } = useCamera(true, 'environment');
+  const [docType, setDocType] = useState<DocType>('cccd');
+  // The QR tab asks "capture or upload?" before turning the camera on at all — camera access is
+  // only requested once "Chụp ảnh" is actually picked, instead of firing (and defaulting to
+  // looking like) auto-capture the moment the tab is opened.
+  const [qrCaptureChosen, setQrCaptureChosen] = useState(false);
+  const cameraEnabled = docType !== 'qr' || qrCaptureChosen;
+  const { videoRef, status: cameraStatus, error: cameraError } = useCamera(cameraEnabled, 'environment');
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [scannerReady, setScannerReady] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
@@ -58,7 +71,6 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
   const [uploading, setUploading] = useState(false);
   const [scanTick, setScanTick] = useState<ScanTick>({ status: 'no_document', progress: 0, quad: null });
 
-  const [docType, setDocType] = useState<DocType>('cccd');
   const [side, setSide] = useState<Side>('front');
   const [frontBlob, setFrontBlob] = useState<Blob | null>(null);
   const [frontJustCaptured, setFrontJustCaptured] = useState(false);
@@ -91,8 +103,13 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
   const attemptFinalUpload = useCallback(
     async (blob: Blob, type: UploadType) => {
       setUploading(true);
+      const startedAt = Date.now();
       try {
         await uploadPhoto(blob, type, transactionId, lang);
+        const elapsed = Date.now() - startedAt;
+        if (elapsed < MIN_UPLOAD_HOLD_MS) {
+          await new Promise((resolve) => setTimeout(resolve, MIN_UPLOAD_HOLD_MS - elapsed));
+        }
         setPendingUpload(null);
         onSuccess({ docType, front: type === 'CC_BACK' ? (frontBlob as Blob) : blob, back: type === 'CC_BACK' ? blob : undefined });
       } catch (err) {
@@ -130,6 +147,15 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
       attemptFinalUpload(blob, type);
     },
     [docType, side, attemptFrontUpload, attemptFinalUpload],
+  );
+
+  const handleFileSelected = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = ''; // allow picking the same file again after an error
+      if (file) handleCaptured(file);
+    },
+    [handleCaptured],
   );
 
   // A failed upload (network hiccup or the backend rejecting the photo itself, e.g. OCR
@@ -195,21 +221,30 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
     (next: DocType) => {
       if (side !== 'front') return;
       setDocType(next);
+      setQrCaptureChosen(false);
       resetScan();
     },
     [side, resetScan],
   );
 
   const cameraReady = cameraStatus === 'ready';
-  const ready = cameraReady && scannerReady;
+  // QR capture uses jsQR (fast, no model to load), not the document-shape AI model.
+  const ready = cameraReady && (docType === 'qr' || scannerReady);
+  const showQrChoice = docType === 'qr' && !qrCaptureChosen;
 
   const title =
-    docType === 'passport' ? t('document.passportFront') : side === 'front' ? t('document.cccdFront') : t('document.cccdBack');
-  const subtitle = docType === 'passport' ? t('document.passportHint') : t('document.cccdHint');
+    docType === 'qr'
+      ? t('document.qrTitle')
+      : docType === 'passport'
+        ? t('document.passportFront')
+        : side === 'front'
+          ? t('document.cccdFront')
+          : t('document.cccdBack');
+  const subtitle = docType === 'qr' ? t('document.qrHint') : docType === 'passport' ? t('document.passportHint') : t('document.cccdHint');
 
   const statusText = uploading
     ? t('common.uploading')
-    : getStatusText({ cameraStatus, cameraError, scannerReady, scannerError, scanTick, t });
+    : getStatusText({ cameraStatus, cameraError, scannerReady, scannerError, scanTick, docType, t });
   const tone: OverlayTone =
     scanTick.status === 'holding' ? 'holding' : scanTick.status === 'capture' ? 'success' : 'idle';
 
@@ -229,46 +264,79 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
         </div>
       )}
 
-      <CameraView containerRef={containerRef} videoRef={videoRef}>
-        <GuideFrame frameRef={frameRef} shape="corners-document" tone={tone} />
-        <DocumentOverlay
-          videoRef={videoRef}
-          containerRef={containerRef}
-          quad={scanTick.quad}
-          tone={tone}
-          statusText={detectError || uploadErrorMessage || showFinalUploadOverlay || showBackSideHint ? '' : statusText}
-          progress={scanTick.progress}
-          barBottom={88}
-        />
+      <input ref={fileInputRef} type="file" accept="image/*" className="document-verify__file-input" onChange={handleFileSelected} />
 
-        {frontJustCaptured && frontThumbUrl && (
-          <div className="document-verify__front-flash">
-            <img className="document-verify__front-fly" src={frontThumbUrl} alt="" />
-          </div>
-        )}
-
-        {showBackSideHint && (
-          <div className="document-verify__flip-hint">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 2.1l4 4-4 4" />
-              <path d="M3 12.2v-2a4 4 0 0 1 4-4h14" />
-              <path d="M7 21.9l-4-4 4-4" />
-              <path d="M21 11.8v2a4 4 0 0 1-4 4H3" />
+      {showQrChoice ? (
+        <div className="document-verify__qr-choice">
+          <div className="document-verify__qr-choice-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 21h3M21 14v3" />
             </svg>
-            <span>{t('document.backSideHint')}</span>
           </div>
-        )}
+          <p className="document-verify__qr-choice-text">{t('document.qrHint')}</p>
+          <div className="document-verify__qr-choice-actions">
+            <button type="button" className="document-verify__qr-choice-btn" onClick={() => setQrCaptureChosen(true)}>
+              <CameraIcon />
+              <span>{t('document.captureAction')}</span>
+            </button>
+            <button
+              type="button"
+              className="document-verify__qr-choice-btn document-verify__qr-choice-btn--secondary"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 16V4M12 4l-4 4M12 4l4 4" />
+                <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+              </svg>
+              <span>{t('document.uploadFromDevice')}</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <CameraView containerRef={containerRef} videoRef={videoRef}>
+          <GuideFrame frameRef={frameRef} shape={docType === 'qr' ? 'corners-qr' : 'corners-document'} tone={tone} />
+          <DocumentOverlay
+            videoRef={videoRef}
+            containerRef={containerRef}
+            quad={scanTick.quad}
+            tone={tone}
+            statusText={detectError || uploadErrorMessage || showFinalUploadOverlay || showBackSideHint ? '' : statusText}
+            progress={scanTick.progress}
+            barBottom={88}
+          />
 
-        {showFinalUploadOverlay && pendingUploadUrl && (
-          <div className="document-verify__frozen">
-            <img src={pendingUploadUrl} alt="" />
-            <div className="document-verify__uploading">
-              <span className="document-verify__uploading-spinner" />
-              <span>{t('common.uploading')}</span>
+          {frontJustCaptured && frontThumbUrl && (
+            <div className="document-verify__front-flash">
+              <img className="document-verify__front-fly" src={frontThumbUrl} alt="" />
             </div>
-          </div>
-        )}
-      </CameraView>
+          )}
+
+          {showBackSideHint && (
+            <div className="document-verify__flip-hint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 2.1l4 4-4 4" />
+                <path d="M3 12.2v-2a4 4 0 0 1 4-4h14" />
+                <path d="M7 21.9l-4-4 4-4" />
+                <path d="M21 11.8v2a4 4 0 0 1-4 4H3" />
+              </svg>
+              <span>{t('document.backSideHint')}</span>
+            </div>
+          )}
+
+          {showFinalUploadOverlay && pendingUploadUrl && (
+            <div className={docType === 'qr' ? 'document-verify__frozen document-verify__frozen--square' : 'document-verify__frozen'}>
+              <img src={pendingUploadUrl} alt="" />
+              <div className="document-verify__uploading">
+                <span className="document-verify__uploading-spinner" />
+                <span>{t('common.uploading')}</span>
+              </div>
+            </div>
+          )}
+        </CameraView>
+      )}
 
       {side === 'front' && !frontJustCaptured && !uploading && (
         <div className="document-verify__type-toggle">
@@ -288,30 +356,44 @@ export function DocumentVerifyScreen({ transactionId, onSuccess, onCancel }: Doc
           >
             {t('document.tabPassport')}
           </button>
+          <button
+            type="button"
+            className={docType === 'qr' ? 'document-verify__type-btn document-verify__type-btn--active' : 'document-verify__type-btn'}
+            onClick={() => selectDocType('qr')}
+          >
+            {t('document.tabQr')}
+          </button>
         </div>
       )}
 
-      {cameraReady && !frontJustCaptured && !uploading && (
+      {!showQrChoice && cameraReady && !frontJustCaptured && !uploading && (
         <button type="button" className="manual-capture-btn manual-capture-btn--raised" aria-label="Chụp" onClick={manualCapture}>
           <CameraIcon />
         </button>
       )}
 
-      {ready && !frontJustCaptured && !uploading && !showBackSideHint && (
-        <ScannerScreen
-          key={`${docType}-${side}`}
-          videoRef={videoRef}
-          containerRef={containerRef}
-          frameRef={frameRef}
-          onTick={handleTick}
-          onCapture={handleCaptured}
-          onError={handleError}
-        />
+      {!showQrChoice && ready && !frontJustCaptured && !uploading && !showBackSideHint && (
+        docType === 'qr' ? (
+          <QrPhotoScannerScreen
+            videoRef={videoRef}
+            containerRef={containerRef}
+            frameRef={frameRef}
+            onCapture={handleCaptured}
+          />
+        ) : (
+          <ScannerScreen
+            key={`${docType}-${side}`}
+            videoRef={videoRef}
+            containerRef={containerRef}
+            frameRef={frameRef}
+            onTick={handleTick}
+            onCapture={handleCaptured}
+            onError={handleError}
+          />
+        )
       )}
 
-      {detectError && (
-        <ErrorDialog message={t('document.errorNotRecognized')} onRescan={handleRetry} onHome={onCancel} />
-      )}
+      {detectError && <ErrorDialog message={detectError} onRescan={handleRetry} onHome={onCancel} />}
 
       {uploadErrorMessage && <ErrorDialog message={uploadErrorMessage} onRescan={handleUploadRecapture} onHome={onCancel} />}
 
@@ -374,13 +456,17 @@ function getStatusText(args: {
   scannerReady: boolean;
   scannerError: string | null;
   scanTick: ScanTick;
+  docType: DocType;
   t: (key: import('../lib/i18n').TranslationKey) => string;
 }): string {
-  const { cameraStatus, cameraError, scannerReady, scannerError, scanTick, t } = args;
+  const { cameraStatus, cameraError, scannerReady, scannerError, scanTick, docType, t } = args;
 
   if (cameraStatus === 'error') return cameraError ?? t('common.cameraError');
-  if (scannerError) return scannerError;
   if (cameraStatus === 'loading') return t('common.loadingCamera');
+  // The QR tab uses jsQR (QrPhotoScannerScreen), not the document-shape AI model, so it doesn't
+  // wait on scannerReady/scannerError at all.
+  if (docType === 'qr') return t('document.qrScanHint');
+  if (scannerError) return scannerError;
   if (!scannerReady) return t('common.loadingModel');
 
   switch (scanTick.status) {
